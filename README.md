@@ -1,6 +1,11 @@
 # drpc-service
 
+> **Community project — not affiliated with or endorsed by The Graph Foundation or Edge & Node.**
+> This is an independent hobby implementation exploring what a JSON-RPC data service on Horizon might look like.
+
 A decentralised JSON-RPC data service built on [The Graph Protocol's Horizon framework](https://thegraph.com/docs/en/horizon/). Indexers stake GRT, register to serve specific chains, and get paid per request via [GraphTally](https://github.com/graphprotocol/graph-improvement-proposals/blob/main/gips/0054-graphtally.md) (TAP v2) micropayments.
+
+Inspired by the [Q3 2026 "Experimental JSON-RPC Data Service"](https://thegraph.com/blog/graph-protocol-2026-technical-roadmap/) direction in The Graph's 2026 Technical Roadmap — but this codebase is an independent community effort, not an official implementation.
 
 ---
 
