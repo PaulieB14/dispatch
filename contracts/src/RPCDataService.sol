@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.27;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
 import {DataService} from "@graphprotocol/horizon/data-service/DataService.sol";
 import {DataServiceFees} from "@graphprotocol/horizon/data-service/extensions/DataServiceFees.sol";
 import {DataServicePausable} from
     "@graphprotocol/horizon/data-service/extensions/DataServicePausable.sol";
-import {IDataService} from "@graphprotocol/horizon/data-service/interfaces/IDataService.sol";
 import {IGraphPayments} from "@graphprotocol/horizon/interfaces/IGraphPayments.sol";
+import {IGraphTallyCollector} from "@graphprotocol/horizon/interfaces/IGraphTallyCollector.sol";
 import {IHorizonStaking} from "@graphprotocol/horizon/interfaces/IHorizonStaking.sol";
 
 import {IRPCDataService} from "./interfaces/IRPCDataService.sol";
@@ -27,7 +29,7 @@ import {IRPCDataService} from "./interfaces/IRPCDataService.sol";
 /// @dev Inherits DataService (provision utilities, GraphDirectory), DataServiceFees
 ///      (stake-backed fee locking), DataServicePausable (emergency stop).
 ///      Deployed on Arbitrum One — all Horizon contracts live there.
-contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IRPCDataService {
+contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePausable, IRPCDataService {
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
@@ -57,13 +59,26 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     /// @notice Chain registrations per provider (active and historical).
     mapping(address => ChainRegistration[]) internal _providerChains;
 
+    /// @notice GraphTallyCollector used to redeem TAP receipts on-chain.
+    IGraphTallyCollector private immutable GRAPH_TALLY_COLLECTOR;
+
     // -------------------------------------------------------------------------
     // Constructor
     // -------------------------------------------------------------------------
 
+    /// @param owner_ Initial owner (governance multisig).
     /// @param controller The Graph Protocol controller address (GraphDirectory).
+    /// @param graphTallyCollector Address of the deployed GraphTallyCollector.
     /// @param pauseGuardian Address authorised to pause the service in an emergency.
-    constructor(address controller, address pauseGuardian) DataService(controller) {
+    constructor(address owner_, address controller, address graphTallyCollector, address pauseGuardian)
+        Ownable(owner_)
+        DataService(controller)
+    {
+        GRAPH_TALLY_COLLECTOR = IGraphTallyCollector(graphTallyCollector);
+        // Configure ProvisionManager ranges (used by _checkProvisionTokens/_checkProvisionParameters).
+        _setProvisionTokensRange(DEFAULT_MIN_PROVISION, type(uint256).max);
+        _setThawingPeriodRange(MIN_THAWING_PERIOD, type(uint64).max);
+        _setVerifierCutRange(0, uint32(1_000_000)); // 0–100% in PPM
         _setPauseGuardian(pauseGuardian, true);
     }
 
@@ -111,15 +126,15 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
         external
         override
         whenNotPaused
-        onlyProvisionAuthorized(serviceProvider)
+        onlyAuthorizedForProvision(serviceProvider)
     {
         if (registeredProviders[serviceProvider]) {
             revert ProviderAlreadyRegistered(serviceProvider);
         }
 
-        // Validate provision meets protocol minimums
+        // Validate provision meets protocol minimums (uses ranges set in constructor).
         _checkProvisionTokens(serviceProvider);
-        _checkProvisionParameters(serviceProvider, MIN_THAWING_PERIOD, type(uint32).max);
+        _checkProvisionParameters(serviceProvider, false);
 
         (string memory endpoint, string memory geoHash) = abi.decode(data, (string, string));
         registeredProviders[serviceProvider] = true;
@@ -131,8 +146,7 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     /// @dev All chain registrations must be stopped first.
     function deregister(address serviceProvider, bytes calldata)
         external
-        override
-        onlyProvisionAuthorized(serviceProvider)
+        onlyAuthorizedForProvision(serviceProvider)
     {
         if (!registeredProviders[serviceProvider]) revert ProviderNotRegistered(serviceProvider);
         if (activeRegistrationCount(serviceProvider) > 0) revert ActiveRegistrationsExist(serviceProvider);
@@ -148,7 +162,7 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
         external
         override
         whenNotPaused
-        onlyProvisionAuthorized(serviceProvider)
+        onlyAuthorizedForProvision(serviceProvider)
     {
         if (!registeredProviders[serviceProvider]) revert ProviderNotRegistered(serviceProvider);
 
@@ -158,12 +172,11 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
         ChainConfig storage cfg = supportedChains[chainId];
         if (!cfg.enabled) revert ChainNotSupported(chainId);
 
-        // Validate provision meets the per-chain minimum
+        // Validate provision meets the per-chain minimum.
         IHorizonStaking.Provision memory provision =
             _graphStaking().getProvision(serviceProvider, address(this));
-        uint256 requiredTokens = cfg.minProvisionTokens;
-        if (provision.tokens < requiredTokens) {
-            revert InsufficientProvision(requiredTokens, provision.tokens);
+        if (provision.tokens < cfg.minProvisionTokens) {
+            revert InsufficientProvision(cfg.minProvisionTokens, provision.tokens);
         }
 
         _providerChains[serviceProvider].push(
@@ -184,7 +197,7 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     function stopService(address serviceProvider, bytes calldata data)
         external
         override
-        onlyProvisionAuthorized(serviceProvider)
+        onlyAuthorizedForProvision(serviceProvider)
     {
         (uint64 chainId, uint8 tier) = abi.decode(data, (uint64, uint8));
 
@@ -202,14 +215,19 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     /// @notice Collect fees by submitting a signed Receipt Aggregate Voucher (RAV).
     ///
     /// Flow:
-    ///   DataService.collect() → GraphTallyCollector.collect()
+    ///   RPCDataService.collect() → GraphTallyCollector.collect()
     ///     → PaymentsEscrow.collect() → GraphPayments.collect()
-    ///     → distributes: protocol tax → service cut → delegator cut → provider
+    ///     → distributes: protocol tax → data service cut → delegator cut → provider
     ///
     /// @param serviceProvider The provider collecting fees.
-    /// @param data ABI-encoded SignedRAV (see GraphTallyCollector interface).
+    /// @param paymentType Must be QueryFee for Phase 1.
+    /// @param data ABI-encoded (SignedRAV, tokensToCollect).
     /// @return fees Total GRT collected by the service provider.
-    function collect(address serviceProvider, bytes calldata data)
+    function collect(
+        address serviceProvider,
+        IGraphPayments.PaymentTypes paymentType,
+        bytes calldata data
+    )
         external
         override
         whenNotPaused
@@ -217,15 +235,29 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     {
         if (!registeredProviders[serviceProvider]) revert ProviderNotRegistered(serviceProvider);
 
-        // Collect via GraphTallyCollector → PaymentsEscrow → GraphPayments.
-        // The RAV's data_service field must equal address(this) — enforced on-chain.
-        fees = _collect(IGraphPayments.PaymentTypes.QueryFee, serviceProvider, data);
+        (IGraphTallyCollector.SignedRAV memory signedRav, uint256 tokensToCollect) =
+            abi.decode(data, (IGraphTallyCollector.SignedRAV, uint256));
 
-        // Lock stake proportional to fees: protects against over-collection.
-        // Stake is released after MIN_THAWING_PERIOD via DataServiceFees.releaseStake().
-        uint256 tokensToLock = fees * STAKE_TO_FEES_RATIO;
-        uint256 unlockAt = block.timestamp + MIN_THAWING_PERIOD;
-        _lockStakeForFees(serviceProvider, tokensToLock, unlockAt);
+        require(
+            signedRav.rav.serviceProvider == serviceProvider,
+            "RPCDataService: RAV provider mismatch"
+        );
+
+        // Release any expired stake claims before locking new ones.
+        _releaseStake(serviceProvider, 0);
+
+        // Collect via GraphTallyCollector → PaymentsEscrow → GraphPayments.
+        // The RAV's dataService field must equal address(this) — enforced by GraphTallyCollector.
+        fees = GRAPH_TALLY_COLLECTOR.collect(
+            paymentType,
+            abi.encode(signedRav, uint256(0)), // dataServiceCut=0 for Phase 1 (no curation)
+            tokensToCollect
+        );
+
+        if (fees > 0) {
+            // Lock stake proportional to fees — released after the dispute window.
+            _lockStake(serviceProvider, fees * STAKE_TO_FEES_RATIO, block.timestamp + MIN_THAWING_PERIOD);
+        }
     }
 
     /// @notice Submit a Tier 1 fraud proof to slash a provider.
@@ -245,7 +277,7 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
     function acceptProvisionPendingParameters(address serviceProvider, bytes calldata)
         external
         override
-        onlyProvisionAuthorized(serviceProvider)
+        onlyAuthorizedForProvision(serviceProvider)
     {
         _acceptProvisionParameters(serviceProvider);
     }
@@ -274,32 +306,6 @@ contract RPCDataService is DataService, DataServiceFees, DataServicePausable, IR
         ChainRegistration[] storage regs = _providerChains[provider];
         for (uint256 i = 0; i < regs.length; i++) {
             if (regs[i].active) count++;
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Internal
-    // -------------------------------------------------------------------------
-
-    /// @dev Validate that the provider's provision has sufficient tokens.
-    function _checkProvisionTokens(address serviceProvider) internal view override {
-        IHorizonStaking.Provision memory provision =
-            _graphStaking().getProvision(serviceProvider, address(this));
-        if (provision.tokens < DEFAULT_MIN_PROVISION) {
-            revert InsufficientProvision(DEFAULT_MIN_PROVISION, provision.tokens);
-        }
-    }
-
-    /// @dev Validate provision parameters (thawing period).
-    function _checkProvisionParameters(
-        address serviceProvider,
-        uint64 minThawingPeriod,
-        uint32 /* maxVerifierCut — unused in Phase 1 */
-    ) internal view override {
-        IHorizonStaking.Provision memory provision =
-            _graphStaking().getProvision(serviceProvider, address(this));
-        if (provision.thawingPeriodMin < minThawingPeriod) {
-            revert ThawingPeriodTooShort(minThawingPeriod, provision.thawingPeriodMin);
         }
     }
 }

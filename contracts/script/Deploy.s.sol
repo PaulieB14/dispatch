@@ -30,14 +30,16 @@ contract Deploy is Script {
     }
 
     function run() external {
+        address owner_ = vm.envAddress("OWNER");
         address controller = vm.envAddress("GRAPH_CONTROLLER");
+        address graphTallyCollector = vm.envAddress("GRAPH_TALLY_COLLECTOR");
         address pauseGuardian = vm.envAddress("PAUSE_GUARDIAN");
 
         ChainInit[] memory chains = _phase1Chains();
 
         vm.startBroadcast();
 
-        RPCDataService service = new RPCDataService(controller, pauseGuardian);
+        RPCDataService service = new RPCDataService(owner_, controller, graphTallyCollector, pauseGuardian);
         console2.log("RPCDataService deployed at:", address(service));
 
         for (uint256 i = 0; i < chains.length; i++) {

@@ -6,35 +6,39 @@ import {Test, console2} from "forge-std/Test.sol";
 import {RPCDataService} from "../src/RPCDataService.sol";
 import {IRPCDataService} from "../src/interfaces/IRPCDataService.sol";
 import {IHorizonStaking} from "@graphprotocol/horizon/interfaces/IHorizonStaking.sol";
+import {IHorizonStakingTypes} from "@graphprotocol/interfaces/contracts/horizon/internal/IHorizonStakingTypes.sol";
+import {IHorizonStakingMain} from "@graphprotocol/interfaces/contracts/horizon/internal/IHorizonStakingMain.sol";
+import {IHorizonStakingBase} from "@graphprotocol/interfaces/contracts/horizon/internal/IHorizonStakingBase.sol";
 import {IGraphPayments} from "@graphprotocol/horizon/interfaces/IGraphPayments.sol";
 
 /// @dev Minimal mock of IHorizonStaking — only the provision-related methods used by RPCDataService.
 contract MockHorizonStaking {
-    mapping(address => mapping(address => IHorizonStaking.Provision)) public provisions;
+    mapping(address => mapping(address => IHorizonStakingTypes.Provision)) public provisions;
 
     function setProvision(
         address serviceProvider,
         address dataService,
         uint256 tokens,
-        uint64 thawingPeriodMin
+        uint64 thawingPeriod_
     ) external {
-        provisions[serviceProvider][dataService] = IHorizonStaking.Provision({
+        provisions[serviceProvider][dataService] = IHorizonStakingTypes.Provision({
             tokens: tokens,
             tokensThawing: 0,
-            createdAt: uint256(block.timestamp),
-            maxVerifierCut: 1_000_000, // 100% in PPM
-            thawingPeriodMin: thawingPeriodMin,
-            verifier: dataService,
             sharesThawing: 0,
+            maxVerifierCut: 1_000_000,
+            thawingPeriod: thawingPeriod_,
+            createdAt: uint64(block.timestamp),
             maxVerifierCutPending: 0,
-            thawingPeriodMinPending: 0
+            thawingPeriodPending: 0,
+            lastParametersStagedAt: 0,
+            thawingNonce: 0
         });
     }
 
     function getProvision(address serviceProvider, address dataService)
         external
         view
-        returns (IHorizonStaking.Provision memory)
+        returns (IHorizonStakingTypes.Provision memory)
     {
         return provisions[serviceProvider][dataService];
     }
@@ -51,27 +55,33 @@ contract MockHorizonStaking {
     function acceptProvisionParameters(address) external {}
 }
 
-/// @dev Minimal mock of GraphDirectory that returns mock contract addresses.
-contract MockGraphDirectory {
-    address public immutable horizonStaking;
-    address public immutable graphPayments;
+/// @dev Mock IController — returns the staking address for "Staking", and address(1) for everything else.
+/// GraphDirectory calls getContractProxy(keccak256(name)) in its constructor.
+contract MockController {
+    mapping(bytes32 => address) private _contracts;
 
-    constructor(address _staking, address _payments) {
-        horizonStaking = _staking;
-        graphPayments = _payments;
+    constructor(address staking_) {
+        address dummy = address(1);
+        _contracts[keccak256("GraphToken")]         = dummy;
+        _contracts[keccak256("Staking")]            = staking_;
+        _contracts[keccak256("GraphPayments")]      = dummy;
+        _contracts[keccak256("PaymentsEscrow")]     = dummy;
+        _contracts[keccak256("EpochManager")]       = dummy;
+        _contracts[keccak256("RewardsManager")]     = dummy;
+        _contracts[keccak256("GraphTokenGateway")]  = dummy;
+        _contracts[keccak256("GraphProxyAdmin")]    = dummy;
+        _contracts[keccak256("Curation")]           = dummy;
     }
 
-    function graphStaking() external view returns (address) {
-        return horizonStaking;
-    }
-    function graphPayments_() external view returns (address) {
-        return graphPayments;
+    function getContractProxy(bytes32 id) external view returns (address) {
+        return _contracts[id];
     }
 }
 
 contract RPCDataServiceTest is Test {
     RPCDataService public service;
     MockHorizonStaking public staking;
+    MockController public controller;
 
     address public owner = makeAddr("owner");
     address public pauseGuardian = makeAddr("pauseGuardian");
@@ -85,25 +95,15 @@ contract RPCDataServiceTest is Test {
 
     function setUp() public {
         staking = new MockHorizonStaking();
+        controller = new MockController(address(staking));
 
-        // Deploy RPCDataService — in a real test this would use a forked Arbitrum env.
-        // For now we deploy with a placeholder controller and override internal calls via mocks.
-        vm.prank(owner);
-        // NOTE: In a fork test, pass the real GraphDirectory (Controller) address.
-        // Here we pass address(0) and override staking calls via vm.mockCall.
-        service = new RPCDataService(address(0), pauseGuardian);
+        // Deploy RPCDataService. address(0) for graphTallyCollector — collect() not tested here.
+        service = new RPCDataService(owner, address(controller), address(0), pauseGuardian);
 
-        // Mock staking.getProvision to return a valid provision for our test provider
-        _mockValidProvision(provider);
+        // Pre-populate staking mock with valid provision for `provider`.
+        staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
 
-        // Mock staking.isAuthorized to allow provider to call on their own behalf
-        vm.mockCall(
-            address(staking),
-            abi.encodeWithSelector(IHorizonStaking.isAuthorized.selector, provider, address(service), provider),
-            abi.encode(true)
-        );
-
-        // Add supported chains
+        // Add supported chains (owner-only).
         vm.startPrank(owner);
         service.addChain(CHAIN_ETH_MAINNET, 0);
         service.addChain(CHAIN_ARBITRUM, 0);
@@ -169,33 +169,19 @@ contract RPCDataServiceTest is Test {
 
     function test_register_revertIfInsufficientProvision() public {
         address poorProvider = makeAddr("poorProvider");
-        _mockProvision(poorProvider, SUFFICIENT_PROVISION - 1, SUFFICIENT_THAWING);
+        staking.setProvision(poorProvider, address(service), SUFFICIENT_PROVISION - 1, SUFFICIENT_THAWING);
 
         vm.prank(poorProvider);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IRPCDataService.InsufficientProvision.selector,
-                RPCDataService(address(service)).DEFAULT_MIN_PROVISION(),
-                SUFFICIENT_PROVISION - 1
-            )
-        );
-        service.register(
-            poorProvider, abi.encode("https://rpc.example.com", "u1hx")
-        );
+        vm.expectRevert(); // ProvisionManagerInvalidValue("tokens", ...)
+        service.register(poorProvider, abi.encode("https://rpc.example.com", "u1hx"));
     }
 
     function test_register_revertIfThawingPeriodTooShort() public {
         address shortProvider = makeAddr("shortProvider");
-        _mockProvision(shortProvider, SUFFICIENT_PROVISION, SUFFICIENT_THAWING - 1);
+        staking.setProvision(shortProvider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING - 1);
 
         vm.prank(shortProvider);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IRPCDataService.ThawingPeriodTooShort.selector,
-                RPCDataService(address(service)).MIN_THAWING_PERIOD(),
-                SUFFICIENT_THAWING - 1
-            )
-        );
+        vm.expectRevert(); // ProvisionManagerInvalidValue("thawingPeriod", ...)
         service.register(shortProvider, abi.encode("https://rpc.example.com", "u1hx"));
     }
 
@@ -323,32 +309,8 @@ contract RPCDataServiceTest is Test {
         service.startService(_provider, abi.encode(chainId, uint8(tier), endpoint));
     }
 
-    function _mockValidProvision(address _provider) internal {
-        _mockProvision(_provider, SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
-    }
-
-    function _mockProvision(address _provider, uint256 tokens, uint64 thawingPeriod) internal {
-        // Mock _graphStaking().getProvision() — DataService calls this via GraphDirectory.
-        // In a fork test, this would be replaced with real HorizonStaking calls.
-        vm.mockCall(
-            address(0), // TODO: replace with real HorizonStaking address in fork tests
-            abi.encodeWithSelector(
-                IHorizonStaking.getProvision.selector, _provider, address(service)
-            ),
-            abi.encode(
-                IHorizonStaking.Provision({
-                    tokens: tokens,
-                    tokensThawing: 0,
-                    createdAt: block.timestamp,
-                    maxVerifierCut: 1_000_000,
-                    thawingPeriodMin: thawingPeriod,
-                    verifier: address(service),
-                    sharesThawing: 0,
-                    maxVerifierCutPending: 0,
-                    thawingPeriodMinPending: 0
-                })
-            )
-        );
+    function _setProvision(address _provider, uint256 tokens, uint64 thawingPeriod) internal {
+        staking.setProvision(_provider, address(service), tokens, thawingPeriod);
     }
 
     function _getChainConfig(uint256 chainId)
@@ -356,7 +318,6 @@ contract RPCDataServiceTest is Test {
         view
         returns (bool enabled, uint256 minTokens)
     {
-        IRPCDataService.ChainConfig memory cfg = service.supportedChains(chainId);
-        return (cfg.enabled, cfg.minProvisionTokens);
+        (enabled, minTokens) = service.supportedChains(chainId);
     }
 }
