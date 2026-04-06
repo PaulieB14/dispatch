@@ -1,0 +1,75 @@
+version: "3.9"
+
+# ── dRPC full-stack ────────────────────────────────────────────────────────────
+#
+# Services:
+#   drpc-gateway  — QoS-aware gateway, TAP receipt signing, /metrics, /ws
+#   drpc-service  — Indexer service, JSON-RPC proxy, TAP receipt validation
+#   postgres      — PostgreSQL for TAP receipt and RAV persistence
+#
+# Quick start:
+#   cp docker/gateway.example.toml docker/gateway.toml
+#   cp docker/config.example.toml  docker/config.toml
+#   # Fill in private keys, provider addresses, and backend URLs.
+#   docker compose -f docker/docker-compose.yml up
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: drpc
+      POSTGRES_PASSWORD: drpc
+      POSTGRES_DB: drpc
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drpc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  drpc-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "7700:7700"
+    volumes:
+      - ./config.toml:/etc/drpc/config.toml:ro
+    environment:
+      DRPC_CONFIG: /etc/drpc/config.toml
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7700/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  drpc-gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gateway
+    restart: unless-stopped
+    depends_on:
+      drpc-service:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./gateway.toml:/etc/drpc/gateway.toml:ro
+    environment:
+      DRPC_GATEWAY_CONFIG: /etc/drpc/gateway.toml
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  postgres_data:

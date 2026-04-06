@@ -25,13 +25,28 @@ pub async fn run(state: AppState) {
 }
 
 async fn probe_all(state: &AppState) {
-    let registry = &state.registry;
+    // Snapshot the provider list into owned values so the registry guard can be dropped
+    // before spawning tasks (which need to be 'static).
+    let tasks: Vec<_> = {
+        let registry = state.registry.load();
+        registry
+            .all_providers()
+            .iter()
+            .flat_map(|p| {
+                let cs_map: Vec<_> = p
+                    .chains
+                    .iter()
+                    .map(|&cid| (p.clone(), cid, registry.chain_state(cid)))
+                    .collect();
+                cs_map
+            })
+            .collect()
+    }; // registry guard dropped here
 
-    for provider in registry.all_providers() {
-        for &chain_id in &provider.chains {
+    for (provider, chain_id, chain_state) in tasks {
+        {
             let client = state.http_client.clone();
             let provider = provider.clone();
-            let chain_state = registry.chain_state(chain_id);
 
             tokio::spawn(async move {
                 let url = format!("{}/rpc/{}", provider.endpoint, chain_id);

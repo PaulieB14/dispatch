@@ -25,7 +25,8 @@ async fn providers_for_chain(
     State(state): State<AppState>,
     axum::extract::Path(chain_id): axum::extract::Path<u64>,
 ) -> Json<Value> {
-    match state.registry.providers_for_chain(chain_id) {
+    let registry = state.registry.load();
+    match registry.providers_for_chain(chain_id) {
         None => Json(json!({ "chain_id": chain_id, "providers": [] })),
         Some((providers, head)) => {
             let list: Vec<Value> = providers

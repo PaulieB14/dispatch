@@ -1,0 +1,37 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM rust:1.76-bookworm AS builder
+
+WORKDIR /build
+
+# Cache dependency compilation separately from source.
+COPY Cargo.toml Cargo.lock ./
+COPY crates/drpc-tap/Cargo.toml     crates/drpc-tap/Cargo.toml
+COPY crates/drpc-gateway/Cargo.toml crates/drpc-gateway/Cargo.toml
+COPY crates/drpc-service/Cargo.toml crates/drpc-service/Cargo.toml
+
+# Create stub lib/main files so cargo can resolve the workspace and cache deps.
+RUN mkdir -p crates/drpc-tap/src \
+             crates/drpc-gateway/src \
+             crates/drpc-service/src \
+ && echo 'pub fn stub() {}' > crates/drpc-tap/src/lib.rs \
+ && echo 'fn main() {}' > crates/drpc-gateway/src/main.rs \
+ && echo 'fn main() {}' > crates/drpc-service/src/main.rs \
+ && cargo build --release -p drpc-gateway 2>/dev/null; true
+
+# Now copy real source and build.
+COPY crates/ crates/
+RUN touch crates/drpc-gateway/src/main.rs && \
+    cargo build --release -p drpc-gateway
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/drpc-gateway /usr/local/bin/drpc-gateway
+
+EXPOSE 8080
+ENV DRPC_GATEWAY_CONFIG=/etc/drpc/gateway.toml
+CMD ["drpc-gateway"]

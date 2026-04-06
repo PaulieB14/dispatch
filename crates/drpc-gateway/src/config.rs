@@ -7,7 +7,13 @@ pub struct Config {
     pub gateway: GatewayConfig,
     pub tap: TapConfig,
     pub qos: QosConfig,
+    /// Static providers (used at startup or when no subgraph is configured).
+    #[serde(default)]
     pub providers: Vec<ProviderConfig>,
+    /// Optional subgraph-based dynamic discovery.
+    pub discovery: Option<DiscoveryConfig>,
+    /// Optional per-IP rate limiting.
+    pub rate_limit: Option<RateLimitConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -54,8 +60,9 @@ pub struct QosConfig {
     pub concurrent_k: usize,
 }
 
-/// Static provider configuration (Phase 1).
-/// Phase 2: replace with dynamic discovery from the RPC network subgraph.
+/// Static provider configuration.
+/// Used as a fallback when no subgraph is configured, or as the initial set
+/// before the first successful subgraph poll.
 #[derive(Debug, Deserialize, Clone)]
 pub struct ProviderConfig {
     /// Indexer's on-chain address (used as `service_provider` in TAP receipts).
@@ -64,6 +71,27 @@ pub struct ProviderConfig {
     pub endpoint: String,
     /// Chain IDs this provider is registered to serve.
     pub chains: Vec<u64>,
+}
+
+/// Dynamic provider discovery via The Graph subgraph.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DiscoveryConfig {
+    /// GraphQL endpoint of the RPC network subgraph.
+    pub subgraph_url: String,
+    /// How often to poll the subgraph for provider updates (seconds).
+    #[serde(default = "default_discovery_interval_secs")]
+    pub interval_secs: u64,
+}
+
+/// Per-IP rate limiting for the RPC endpoint.
+#[derive(Debug, Deserialize, Clone)]
+pub struct RateLimitConfig {
+    /// Steady-state requests per second per IP address.
+    #[serde(default = "default_rps")]
+    pub requests_per_second: u32,
+    /// Burst capacity above the steady-state rate.
+    #[serde(default = "default_burst")]
+    pub burst: u32,
 }
 
 impl Config {
@@ -88,3 +116,6 @@ fn default_latency_weight() -> f64 { 0.30 }
 fn default_availability_weight() -> f64 { 0.30 }
 fn default_freshness_weight() -> f64 { 0.25 }
 fn default_concurrent_k() -> usize { 3 }
+fn default_discovery_interval_secs() -> u64 { 60 }
+fn default_rps() -> u32 { 100 }
+fn default_burst() -> u32 { 20 }

@@ -1,17 +1,18 @@
-use std::{sync::Arc, time::Instant};
+use std::{net::SocketAddr, sync::Arc, time::Instant};
 
 use alloy_primitives::Bytes;
 use axum::{
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     response::{IntoResponse, Response},
     routing::post,
     Json, Router,
 };
+use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::task::JoinSet;
 
-use crate::{error::GatewayError, registry::Provider, selector, server::AppState};
+use crate::{error::GatewayError, metrics, registry::Provider, selector, server::AppState};
 use drpc_tap::create_receipt;
 
 pub fn router() -> Router<AppState> {
@@ -60,44 +61,104 @@ impl JsonRpcRequest {
 // Quorum methods
 // ---------------------------------------------------------------------------
 
-/// Methods that require cross-provider consensus before returning.
-///
-/// For these methods the gateway waits for all k candidates to respond,
-/// picks the majority result by value equality, rewards the majority, and
-/// penalises any minority provider with a QoS failure.
 fn requires_quorum(method: &str) -> bool {
     matches!(method, "eth_call" | "eth_getLogs")
 }
 
 // ---------------------------------------------------------------------------
-// Handler
+// Handler — single and batch
 // ---------------------------------------------------------------------------
 
 async fn rpc_handler(
     State(state): State<AppState>,
     Path(chain_id): Path<u64>,
-    Json(request): Json<JsonRpcRequest>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
 ) -> Result<Response, GatewayError> {
-    request.validate()?;
-
-    let (providers, chain_head) = state
-        .registry
-        .providers_for_chain(chain_id)
-        .ok_or(GatewayError::UnsupportedChain(chain_id))?;
-
-    if providers.is_empty() {
-        return Err(GatewayError::NoProviders(chain_id));
+    // Per-IP rate limiting.
+    if let Some(limiter) = &state.rate_limiter {
+        if limiter.check_key(&peer.ip()).is_err() {
+            return Err(GatewayError::RateLimited);
+        }
     }
 
-    let candidates = selector::select(providers, chain_head, state.config.qos.concurrent_k);
+    match body {
+        Value::Array(items) => {
+            if items.is_empty() {
+                return Err(GatewayError::InvalidRequest("empty batch".to_string()));
+            }
+            let requests: Vec<JsonRpcRequest> = items
+                .into_iter()
+                .map(serde_json::from_value)
+                .collect::<Result<_, _>>()
+                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
+
+            let responses: Vec<Value> = join_all(
+                requests.iter().map(|req| process_request(&state, chain_id, req)),
+            )
+            .await
+            .into_iter()
+            .map(|r| match r {
+                Ok(resp) => serde_json::to_value(resp).unwrap_or(Value::Null),
+                Err(e) => json!({
+                    "jsonrpc": "2.0",
+                    "id": Value::Null,
+                    "error": { "code": -32000, "message": e.to_string() }
+                }),
+            })
+            .collect();
+
+            Ok(Json(Value::Array(responses)).into_response())
+        }
+        Value::Object(_) => {
+            let request: JsonRpcRequest = serde_json::from_value(body)
+                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
+            let response = process_request(&state, chain_id, &request).await?;
+            Ok(Json(response).into_response())
+        }
+        _ => Err(GatewayError::InvalidRequest(
+            "expected JSON object or array".to_string(),
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core dispatch
+// ---------------------------------------------------------------------------
+
+async fn process_request(
+    state: &AppState,
+    chain_id: u64,
+    request: &JsonRpcRequest,
+) -> Result<JsonRpcResponse, GatewayError> {
+    request.validate()?;
+
+    // Load registry snapshot and select candidates — guard dropped before any await.
+    let candidates = {
+        let registry = state.registry.load();
+        let (providers, chain_head) = registry
+            .providers_for_chain(chain_id)
+            .ok_or(GatewayError::UnsupportedChain(chain_id))?;
+        if providers.is_empty() {
+            return Err(GatewayError::NoProviders(chain_id));
+        }
+        selector::select(providers, chain_head, state.config.qos.concurrent_k)
+    };
+
     let cu = cu_weight_for(&request.method);
     let receipt_value = cu as u128 * state.config.tap.base_price_per_cu;
 
+    let start = Instant::now();
+
     let (response, winner) = if requires_quorum(&request.method) {
-        dispatch_quorum(&state, chain_id, &request, &candidates, receipt_value).await?
+        dispatch_quorum(state, chain_id, request, &candidates, receipt_value).await?
     } else {
-        dispatch_concurrent(&state, chain_id, &request, &candidates, receipt_value).await?
+        dispatch_concurrent(state, chain_id, request, &candidates, receipt_value).await?
     };
+
+    let duration = start.elapsed().as_secs_f64();
+    let outcome = if response.error.is_some() { "error" } else { "ok" };
+    metrics::record(chain_id, &request.method, outcome, duration);
 
     tracing::debug!(
         method = %request.method,
@@ -107,7 +168,7 @@ async fn rpc_handler(
         "served"
     );
 
-    Ok(Json(response).into_response())
+    Ok(response)
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +315,6 @@ async fn dispatch_quorum(
         });
     }
 
-    // Collect all outcomes (don't abort early).
     let mut outcomes: Vec<ProviderOutcome> = Vec::new();
     while let Some(join_result) = set.join_next().await {
         match join_result {
@@ -268,11 +328,7 @@ async fn dispatch_quorum(
         return Err(GatewayError::AllProvidersFailed(chain_id));
     }
 
-    // Majority vote: find the result value shared by the most providers.
-    // Uses serde_json::Value::eq for deep equality (correct for eth_call hex
-    // strings and eth_getLogs log arrays).
     let winner_idx = majority_index(&outcomes);
-
     let winner_result = &outcomes[winner_idx].response.result;
     let mut minority_count = 0usize;
 
@@ -305,8 +361,6 @@ async fn dispatch_quorum(
     Ok((winner.response, winner.provider))
 }
 
-/// Return the index in `outcomes` belonging to the majority result group.
-/// Ties are broken in favour of the first candidate (lowest index).
 fn majority_index(outcomes: &[ProviderOutcome]) -> usize {
     let n = outcomes.len();
     let mut best_idx = 0;
@@ -384,10 +438,9 @@ mod tests {
     fn majority_index_two_vs_one() {
         let outcomes = vec![
             make_outcome(Some(Value::String("0x1".into()))),
-            make_outcome(Some(Value::String("0x2".into()))), // minority
+            make_outcome(Some(Value::String("0x2".into()))),
             make_outcome(Some(Value::String("0x1".into()))),
         ];
-        // indices 0 and 2 agree → winner is index 0
         assert_eq!(majority_index(&outcomes), 0);
     }
 

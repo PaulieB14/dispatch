@@ -26,6 +26,9 @@ pub enum GatewayError {
     #[error("receipt signing failed: {0}")]
     SigningError(String),
 
+    #[error("rate limit exceeded")]
+    RateLimited,
+
     #[error("internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -38,6 +41,9 @@ impl IntoResponse for GatewayError {
             }
             GatewayError::UnsupportedChain(_) => {
                 (StatusCode::NOT_FOUND, -32002, self.to_string())
+            }
+            GatewayError::RateLimited => {
+                (StatusCode::TOO_MANY_REQUESTS, -32005, self.to_string())
             }
             GatewayError::NoProviders(_) | GatewayError::AllProvidersFailed(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, -32003, self.to_string())

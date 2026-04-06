@@ -1,0 +1,34 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM rust:1.76-bookworm AS builder
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/drpc-tap/Cargo.toml     crates/drpc-tap/Cargo.toml
+COPY crates/drpc-gateway/Cargo.toml crates/drpc-gateway/Cargo.toml
+COPY crates/drpc-service/Cargo.toml crates/drpc-service/Cargo.toml
+
+RUN mkdir -p crates/drpc-tap/src \
+             crates/drpc-gateway/src \
+             crates/drpc-service/src \
+ && echo 'pub fn stub() {}' > crates/drpc-tap/src/lib.rs \
+ && echo 'fn main() {}' > crates/drpc-gateway/src/main.rs \
+ && echo 'fn main() {}' > crates/drpc-service/src/main.rs \
+ && cargo build --release -p drpc-service 2>/dev/null; true
+
+COPY crates/ crates/
+RUN touch crates/drpc-service/src/main.rs && \
+    cargo build --release -p drpc-service
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/drpc-service /usr/local/bin/drpc-service
+
+EXPOSE 7700
+ENV DRPC_CONFIG=/etc/drpc/config.toml
+CMD ["drpc-service"]

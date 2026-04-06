@@ -35,10 +35,24 @@ freshness_weight     = 0.25
 # How many providers to dispatch to concurrently (first response wins).
 concurrent_k         = 3
 
-# ── Providers ─────────────────────────────────────────────────────────────
-# Static provider list (Phase 1).
-# Phase 2: replace with dynamic discovery from the RPC network subgraph.
+# ── Dynamic discovery ─────────────────────────────────────────────────────
+# When configured, the gateway polls the RPC network subgraph and updates the
+# provider registry automatically. Static [[providers]] below are used as the
+# initial set until the first successful poll.
 #
+# [discovery]
+# subgraph_url  = "https://api.thegraph.com/subgraphs/name/your-org/rpc-network"
+# interval_secs = 60
+
+# ── Rate limiting ──────────────────────────────────────────────────────────
+# Per-IP token-bucket rate limiting on the /rpc/{chain_id} endpoint.
+#
+# [rate_limit]
+# requests_per_second = 100
+# burst               = 20
+
+# ── Static providers ──────────────────────────────────────────────────────
+# Used at startup and as a fallback when no subgraph is configured.
 # Add one [[providers]] block per indexer.
 [[providers]]
 address  = "0x0000000000000000000000000000000000000000"  # indexer's on-chain address
