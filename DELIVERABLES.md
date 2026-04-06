@@ -35,7 +35,7 @@ Key responsibilities:
 - `startService` — register provider for a `(chainId, capabilityTier, endpoint)` tuple
 - `stopService` — deactivate chain registration
 - `collect` — enforce `QueryFee` payment type explicitly (revert on others); decode `SignedRAV`, call `GraphTallyCollector`, route fees to `paymentsDestination`, lock stake at 5:1 ratio
-- `slash` — Phase 2: Tier 1 fraud proof handling
+- `slash` — Tier 1 fraud proof: EIP-1186 MPT proof verification via `StateProofVerifier.sol`; challenger bounty at 50% of slash amount
 - On-chain chain registry: `mapping(uint256 => ChainConfig)` with governance allowlist
 
 ### 2. `drpc-indexer-service` (Rust)

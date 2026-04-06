@@ -1,6 +1,6 @@
 # RFC: dRPC Data Service on The Graph Horizon
 
-**Status:** Draft
+**Status:** Implemented (see codebase)
 **Target:** Q3 2026 experimental window
 **Authors:** TBD
 **Based on:** GIP-0066 (Horizon), GIP-0054 (GraphTally), GIP-0042 (World of Data Services)
@@ -144,7 +144,7 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
     function startService(address serviceProvider, bytes calldata data) external override;
     function stopService(address serviceProvider, bytes calldata data) external override;
     function collect(address serviceProvider, bytes calldata data) external override returns (uint256);
-    function slash(address serviceProvider, bytes calldata data) external override;     // Phase 2
+    function slash(address serviceProvider, bytes calldata data) external override;     // EIP-1186 MPT fraud proof
     function acceptProvisionPendingParameters(address sp, bytes calldata) external override;
     function setPaymentsDestination(address destination) external;   // Decouple payment recipient from operator key
 
@@ -189,10 +189,11 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
 - Routes through `GraphPayments` for distribution
 - Returns tokens collected
 
-**slash(serviceProvider, data)** *(Phase 2)*
-- `data`: ABI-encoded fraud proof (request, signed response, Merkle proof of correct answer)
-- Verifies Tier 1 fraud proof on-chain
-- Calls `HorizonStaking.slash(serviceProvider, slashAmount, verifierCut, beneficiary)`
+**slash(serviceProvider, data)**
+- `data`: ABI-encoded `Tier1FraudProof` — block hash, account, dispute type (Balance/Nonce/Storage), claimed value, EIP-1186 account + storage proofs, challenger address
+- Looks up trusted state root via `trustedStateRoots[blockHash]` (populated by `drpc-oracle`)
+- Verifies proof via `StateProofVerifier.verifyAccount` / `verifyStorage` (OZ MPT library)
+- Calls `HorizonStaking.slash(serviceProvider, slashAmount, verifierCut, challenger)` — 50% bounty to challenger
 
 ### 4.3 Provision parameters
 
@@ -238,7 +239,7 @@ Methods where correctness is verifiable via Ethereum's Merkle-Patricia trie:
 
 **Performance:** Proofs are 500B–5KB, generation takes 5–20ms. Default: sign all responses, attach proofs on-demand or during random spot-checks. NOT on every request.
 
-**Fraud proof slashing:** Challenger submits `(request, signed response, Merkle proof of correct answer)`. On-chain arbitration verifies. If valid: provider's provision slashed. Phase 2 only.
+**Fraud proof slashing:** Challenger submits a `Tier1FraudProof` with the disputed block hash, EIP-1186 account/storage proofs, and claimed vs actual value. On-chain arbitration verifies via `StateProofVerifier.sol`. If valid: 10,000 GRT slashed, 50% to challenger. `drpc-oracle` maintains the `trustedStateRoots` mapping that makes verification possible.
 
 **Competitive differentiation:** No existing dRPC protocol (Lava, Pocket, DRPC, Fluence) uses Merkle proofs. This is a significant differentiator.
 
@@ -280,9 +281,7 @@ TAP receipt overhead must remain **<5ms** per request:
 
 ### 6.2 CU-weighted pricing
 
-Phase 1: flat rate ~$40/million requests.
-
-Phase 2 — compute unit weights:
+CU-weighted pricing is implemented. Compute unit weights:
 
 | Method category | CU weight |
 |---|---|
@@ -469,7 +468,7 @@ TAP aggregator: `https://tap-aggregator.network.thegraph.com`
 | Q4 | Gateway discovery | On-chain events + RPC network subgraph (mirrors SubgraphService pattern) |
 | Q5 | RAV aggregation | Shared TAP/GraphTally infrastructure — data_service field differentiates |
 | Q6 | stakeToFeesRatio | 5:1 (consistent with SubgraphService) |
-| Q7 | Per-method pricing | CU-weighted (Phase 2); flat rate Phase 1 |
+| Q7 | Per-method pricing | ✅ CU-weighted (1–20 CU per method; configurable `base_price_per_cu`) |
 | Q8 | eth_sendRawTransaction | Include at flat fee; no verification needed (self-authenticated) |
 
 ---
@@ -496,6 +495,6 @@ TAP aggregator: `https://tap-aggregator.network.thegraph.com`
 | Infura DIN | Watcher nodes + stake-backed SLAs | — (EigenLayer) | 30+ | 13B+ req/month; progressive decentralisation |
 | Ankr | Internal QoS | ANKR | 80+ | 1T+ monthly requests; method-weighted pricing |
 | dRPC.org | AI routing (no on-chain) | — | 90+ | No token; curated providers |
-| **This service** | **Merkle proofs (Tier 1) + quorum** | **GRT** | **4+ Phase 1** | **Integrated with subgraphs, Substreams, Amp** |
+| **This service** | **Merkle proofs (Tier 1) + quorum** | **GRT** | **10+ chains** | **Integrated with subgraphs, Substreams, Amp** |
 
 The Graph's competitive moat: RPC + indexed data (subgraphs) + streaming (Substreams) + SQL analytics (Amp) under one economic and security umbrella. One stake, one payment system, one network.
