@@ -1,0 +1,69 @@
+[
+  {
+    "type": "event",
+    "name": "ChainAdded",
+    "inputs": [
+      { "name": "chainId", "type": "uint256", "indexed": true },
+      { "name": "minProvisionTokens", "type": "uint256", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ChainRemoved",
+    "inputs": [
+      { "name": "chainId", "type": "uint256", "indexed": true }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ProviderRegistered",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true },
+      { "name": "endpoint", "type": "string", "indexed": false },
+      { "name": "geoHash", "type": "string", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ProviderDeregistered",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "PaymentsDestinationSet",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true },
+      { "name": "destination", "type": "address", "indexed": true }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ServiceStarted",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true },
+      { "name": "chainId", "type": "uint64", "indexed": true },
+      { "name": "tier", "type": "uint8", "indexed": false },
+      { "name": "endpoint", "type": "string", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ServiceStopped",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true },
+      { "name": "chainId", "type": "uint64", "indexed": true },
+      { "name": "tier", "type": "uint8", "indexed": false }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "FraudProofSubmitted",
+    "inputs": [
+      { "name": "provider", "type": "address", "indexed": true },
+      { "name": "challenger", "type": "address", "indexed": true },
+      { "name": "slashAmount", "type": "uint256", "indexed": false }
+    ]
+  }
+]

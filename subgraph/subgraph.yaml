@@ -1,0 +1,41 @@
+specVersion: 0.0.5
+description: RPC network provider registry — indexes RPCDataService events for dynamic provider discovery
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: RPCDataService
+    network: arbitrum-one
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: RPCDataService
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Indexer
+        - ChainRegistration
+        - SupportedChain
+      abis:
+        - name: RPCDataService
+          file: ./abis/RPCDataService.json
+      eventHandlers:
+        - event: ChainAdded(indexed uint256,uint256)
+          handler: handleChainAdded
+        - event: ChainRemoved(indexed uint256)
+          handler: handleChainRemoved
+        - event: ProviderRegistered(indexed address,string,string)
+          handler: handleProviderRegistered
+        - event: ProviderDeregistered(indexed address)
+          handler: handleProviderDeregistered
+        - event: PaymentsDestinationSet(indexed address,indexed address)
+          handler: handlePaymentsDestinationSet
+        - event: ServiceStarted(indexed address,indexed uint64,uint8,string)
+          handler: handleServiceStarted
+        - event: ServiceStopped(indexed address,indexed uint64,uint8)
+          handler: handleServiceStopped
+        - event: FraudProofSubmitted(indexed address,indexed address,uint256)
+          handler: handleFraudProofSubmitted
+      file: ./src/mapping.ts

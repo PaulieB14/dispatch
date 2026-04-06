@@ -1,0 +1,35 @@
+type Indexer @entity {
+  " Provider address (hex string) "
+  id: ID!
+  address: Bytes!
+  endpoint: String!
+  geoHash: String!
+  " Address that receives collected GRT fees "
+  paymentsDestination: Bytes!
+  registered: Boolean!
+  registeredAt: BigInt!
+  deregisteredAt: BigInt
+  chains: [ChainRegistration!]! @derivedFrom(field: "indexer")
+}
+
+type ChainRegistration @entity {
+  " {provider}-{chainId}-{tier} "
+  id: ID!
+  indexer: Indexer!
+  chainId: BigInt!
+  " 0=Standard 1=Archive 2=Debug 3=WebSocket "
+  tier: Int!
+  endpoint: String!
+  active: Boolean!
+  startedAt: BigInt!
+  stoppedAt: BigInt
+}
+
+type SupportedChain @entity {
+  " EIP-155 chainId as string "
+  id: ID!
+  chainId: BigInt!
+  enabled: Boolean!
+  minProvisionTokens: BigInt!
+  updatedAt: BigInt!
+}

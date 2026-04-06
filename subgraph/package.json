@@ -1,0 +1,16 @@
+{
+  "name": "rpc-network-subgraph",
+  "version": "0.1.0",
+  "scripts": {
+    "codegen": "graph codegen",
+    "build": "graph build",
+    "deploy:arbitrum-one": "graph deploy --studio rpc-network",
+    "deploy:arbitrum-sepolia": "graph deploy --studio rpc-network-testnet --network arbitrum-sepolia"
+  },
+  "dependencies": {
+    "@graphprotocol/graph-ts": "^0.35.1"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "^0.79.2"
+  }
+}
