@@ -267,10 +267,14 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
 
         // Collect via GraphTallyCollector → PaymentsEscrow → GraphPayments.
         // The RAV's dataService field must equal address(this) — enforced by GraphTallyCollector.
-        // Fees are routed to paymentsDestination, not necessarily serviceProvider.
+        // Fees flow to paymentsDestination[serviceProvider], not necessarily serviceProvider itself.
         fees = GRAPH_TALLY_COLLECTOR.collect(
             paymentType,
-            abi.encode(signedRav, uint256(0)), // dataServiceCut=0 for Phase 1 (no curation)
+            abi.encode(
+                signedRav,
+                uint256(0),                              // dataServiceCut=0 for Phase 1 (no curation)
+                paymentsDestination[serviceProvider]     // receiverDestination: where GRT lands
+            ),
             tokensToCollect
         );
 

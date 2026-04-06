@@ -1,4 +1,5 @@
 @graphprotocol/horizon/interfaces/=lib/contracts/packages/interfaces/contracts/horizon/
+@graphprotocol/horizon/mocks/=lib/contracts/packages/horizon/contracts/mocks/
 @graphprotocol/horizon/data-service/=lib/contracts/packages/horizon/contracts/data-service/
 @graphprotocol/horizon/utilities/=lib/contracts/packages/horizon/contracts/utilities/
 @graphprotocol/horizon/libraries/=lib/contracts/packages/horizon/contracts/libraries/
