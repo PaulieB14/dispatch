@@ -43,7 +43,13 @@ async fn proxy(client: WebSocket, state: AppState, chain_id: u64, peer: SocketAd
                 return;
             }
         };
-        let mut candidates = selector::select(providers, chain_head, 1);
+        let mut candidates = selector::select(
+            providers,
+            chain_head,
+            1,
+            state.config.gateway.region.as_deref(),
+            state.config.qos.region_bonus,
+        );
         match candidates.pop() {
             Some(p) => p,
             None => {

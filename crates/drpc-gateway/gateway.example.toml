@@ -1,6 +1,10 @@
 [gateway]
 host = "0.0.0.0"
 port = 8080
+# Geographic region of this gateway. Providers in the same region receive a
+# score bonus (see [qos].region_bonus) before latency probes establish a ranking.
+# Suggested values: "us-east", "us-west", "eu-west", "eu-central", "ap-southeast"
+# region = "eu-west"
 
 [tap]
 # Gateway operator private key — signs TAP receipts sent to indexers.
@@ -25,15 +29,23 @@ latency_weight      = 0.30
 availability_weight = 0.30
 freshness_weight    = 0.25
 concurrent_k        = 3     # Dispatch to top-3 providers; first response wins
+# Score bonus for providers in the same region as this gateway.
+# 0.15 means a same-region provider gets +15pp weight before latency data exists.
+region_bonus        = 0.15
 
-# Static provider list (Phase 1).
-# Phase 2: replace with dynamic discovery from the RPC network subgraph.
+# Static provider list.
+# Dynamic discovery: configure [discovery] below to pull from the RPC subgraph.
 [[providers]]
-address  = "0xYOUR_INDEXER_1_ADDRESS"
-endpoint = "https://rpc1.example.com"
-chains   = [1, 42161, 10, 8453]
+address      = "0xYOUR_INDEXER_1_ADDRESS"
+endpoint     = "https://rpc1.example.com"
+chains       = [1, 42161, 10, 8453]
+region       = "eu-west"
+capabilities = ["standard"]
 
 [[providers]]
-address  = "0xYOUR_INDEXER_2_ADDRESS"
-endpoint = "https://rpc2.example.com"
-chains   = [1, 42161]
+address      = "0xYOUR_INDEXER_2_ADDRESS"
+endpoint     = "https://rpc2.example.com"
+chains       = [1, 42161]
+region       = "us-east"
+# This provider also runs an archive node and Geth debug APIs:
+# capabilities = ["standard", "archive", "debug"]

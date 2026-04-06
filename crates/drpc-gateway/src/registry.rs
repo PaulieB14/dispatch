@@ -14,7 +14,7 @@ use std::{
 
 use alloy_primitives::Address;
 
-use crate::{config::ProviderConfig, qos::ProviderQos};
+use crate::{config::{CapabilityTier, ProviderConfig}, qos::ProviderQos};
 
 /// A registered RPC provider.
 #[derive(Debug)]
@@ -22,6 +22,8 @@ pub struct Provider {
     pub address: Address,
     pub endpoint: String,
     pub chains: Vec<u64>,
+    pub region: Option<String>,
+    pub capabilities: Vec<CapabilityTier>,
     pub qos: ProviderQos,
 }
 
@@ -31,6 +33,8 @@ impl Provider {
             address: cfg.address,
             endpoint: cfg.endpoint.trim_end_matches('/').to_string(),
             chains: cfg.chains.clone(),
+            region: cfg.region.clone(),
+            capabilities: cfg.capabilities.clone(),
             qos: ProviderQos::default(),
         }
     }

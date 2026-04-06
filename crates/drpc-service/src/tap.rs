@@ -152,7 +152,7 @@ fn eip712_hash(domain_sep: B256, receipt: &Receipt) -> Result<B256, ServiceError
     buf[2..34].copy_from_slice(domain_sep.as_slice());
     buf[34..66].copy_from_slice(struct_hash.as_slice());
 
-    Ok(keccak256(&buf))
+    Ok(keccak256(buf))
 }
 
 fn receipt_struct_hash(r: &Receipt) -> B256 {

@@ -15,7 +15,17 @@ use crate::registry::Provider;
 ///
 /// Providers with zero score are included with a small floor weight so they
 /// can be probed and potentially graduate to higher weights.
-pub fn select(providers: &[Arc<Provider>], chain_head: u64, k: usize) -> Vec<Arc<Provider>> {
+///
+/// `gateway_region` and `region_bonus`: when a provider's region matches the
+/// gateway's region, `region_bonus` is added to its weight — preferring nearby
+/// providers before latency data is established without hard-excluding others.
+pub fn select(
+    providers: &[Arc<Provider>],
+    chain_head: u64,
+    k: usize,
+    gateway_region: Option<&str>,
+    region_bonus: f64,
+) -> Vec<Arc<Provider>> {
     if providers.is_empty() {
         return vec![];
     }
@@ -24,7 +34,14 @@ pub fn select(providers: &[Arc<Provider>], chain_head: u64, k: usize) -> Vec<Arc
     let mut remaining: Vec<(usize, f64)> = providers
         .iter()
         .enumerate()
-        .map(|(i, p)| (i, score_with_floor(p.qos.score(chain_head))))
+        .map(|(i, p)| {
+            let base = score_with_floor(p.qos.score(chain_head));
+            let bonus = match (gateway_region, p.region.as_deref()) {
+                (Some(gw), Some(pv)) if gw == pv => region_bonus,
+                _ => 0.0,
+            };
+            (i, base + bonus)
+        })
         .collect();
 
     let mut selected = Vec::with_capacity(k);
@@ -63,14 +80,29 @@ fn score_with_floor(score: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{config::ProviderConfig, registry::Provider, qos::ProviderQos};
+    use crate::{registry::Provider, qos::ProviderQos};
     use alloy_primitives::Address;
 
     fn make_provider(endpoint: &str) -> Arc<Provider> {
+        use crate::config::CapabilityTier;
         Arc::new(Provider {
             address: Address::ZERO,
             endpoint: endpoint.to_string(),
             chains: vec![1],
+            region: None,
+            capabilities: vec![CapabilityTier::Standard],
+            qos: ProviderQos::default(),
+        })
+    }
+
+    fn make_provider_with_region(endpoint: &str, region: &str) -> Arc<Provider> {
+        use crate::config::CapabilityTier;
+        Arc::new(Provider {
+            address: Address::ZERO,
+            endpoint: endpoint.to_string(),
+            chains: vec![1],
+            region: Some(region.to_string()),
+            capabilities: vec![CapabilityTier::Standard],
             qos: ProviderQos::default(),
         })
     }
@@ -78,14 +110,14 @@ mod tests {
     #[test]
     fn select_returns_at_most_k() {
         let providers: Vec<_> = (0..5).map(|i| make_provider(&format!("http://p{i}"))).collect();
-        let selected = select(&providers, 1000, 3);
+        let selected = select(&providers, 1000, 3, None, 0.15);
         assert_eq!(selected.len(), 3);
     }
 
     #[test]
     fn select_no_duplicates() {
         let providers: Vec<_> = (0..5).map(|i| make_provider(&format!("http://p{i}"))).collect();
-        let selected = select(&providers, 1000, 5);
+        let selected = select(&providers, 1000, 5, None, 0.15);
         assert_eq!(selected.len(), 5);
         // All endpoints distinct
         let endpoints: std::collections::HashSet<_> = selected.iter().map(|p| &p.endpoint).collect();
@@ -94,14 +126,33 @@ mod tests {
 
     #[test]
     fn select_empty_providers_returns_empty() {
-        let selected = select(&[], 0, 3);
+        let selected = select(&[], 0, 3, None, 0.15);
         assert!(selected.is_empty());
     }
 
     #[test]
     fn select_k_larger_than_providers() {
         let providers: Vec<_> = (0..2).map(|i| make_provider(&format!("http://p{i}"))).collect();
-        let selected = select(&providers, 1000, 10);
+        let selected = select(&providers, 1000, 10, None, 0.15);
         assert_eq!(selected.len(), 2);
+    }
+
+    #[test]
+    fn region_bonus_boosts_local_provider() {
+        // One local provider (low QoS), one remote provider (same low QoS).
+        // With a high region_bonus the local one should dominate selection.
+        let local = make_provider_with_region("http://local", "eu-west");
+        let remote = make_provider_with_region("http://remote", "us-east");
+        let providers = vec![local, remote];
+
+        let mut local_count = 0usize;
+        for _ in 0..200 {
+            let selected = select(&providers, 1000, 1, Some("eu-west"), 10.0);
+            if selected[0].endpoint == "http://local" {
+                local_count += 1;
+            }
+        }
+        // With bonus=10 vs floor=0.05, local provider should win overwhelmingly.
+        assert!(local_count > 150, "local_count={local_count}");
     }
 }

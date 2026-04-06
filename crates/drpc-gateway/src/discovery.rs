@@ -115,6 +115,11 @@ async fn fetch_providers(
             address,
             endpoint: indexer.endpoint.trim_end_matches('/').to_string(),
             chains,
+            // Region and capability data are not yet in the subgraph schema.
+            // Providers discovered dynamically are assumed Standard-tier with
+            // no region hint until the subgraph is extended in Phase 3.
+            region: None,
+            capabilities: vec![crate::config::CapabilityTier::Standard],
         });
     }
 

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::task::JoinSet;
 
-use crate::{error::GatewayError, metrics, registry::Provider, selector, server::AppState};
+use crate::{config::CapabilityTier, error::GatewayError, metrics, registry::Provider, selector, server::AppState};
 use drpc_tap::create_receipt;
 
 pub fn router() -> Router<AppState> {
@@ -63,6 +63,19 @@ impl JsonRpcRequest {
 
 fn requires_quorum(method: &str) -> bool {
     matches!(method, "eth_call" | "eth_getLogs")
+}
+
+/// Map a JSON-RPC method to the minimum capability tier required to serve it.
+fn required_tier(method: &str) -> CapabilityTier {
+    if method.starts_with("debug_") || method.starts_with("trace_") {
+        CapabilityTier::Debug
+    } else {
+        // Archive detection requires inspecting block parameters, which is
+        // expensive and context-dependent. Standard tier covers all other
+        // methods; callers that need archive routing should use the
+        // /rpc/{chain_id}/archive endpoint (Phase 3).
+        CapabilityTier::Standard
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,10 +152,26 @@ async fn process_request(
         let (providers, chain_head) = registry
             .providers_for_chain(chain_id)
             .ok_or(GatewayError::UnsupportedChain(chain_id))?;
-        if providers.is_empty() {
+
+        // Filter to providers that support the required capability tier.
+        let tier = required_tier(&request.method);
+        let capable: Vec<_> = providers
+            .iter()
+            .filter(|p| p.capabilities.contains(&tier))
+            .cloned()
+            .collect();
+
+        if capable.is_empty() {
             return Err(GatewayError::NoProviders(chain_id));
         }
-        selector::select(providers, chain_head, state.config.qos.concurrent_k)
+
+        selector::select(
+            &capable,
+            chain_head,
+            state.config.qos.concurrent_k,
+            state.config.gateway.region.as_deref(),
+            state.config.qos.region_bonus,
+        )
     };
 
     let cu = cu_weight_for(&request.method);
@@ -405,7 +434,7 @@ mod tests {
     use super::*;
 
     fn make_outcome(result: Option<Value>) -> ProviderOutcome {
-        use crate::{qos::ProviderQos, registry::Provider};
+        use crate::{config::CapabilityTier, qos::ProviderQos, registry::Provider};
         use alloy_primitives::Address;
         ProviderOutcome {
             response: JsonRpcResponse {
@@ -418,6 +447,8 @@ mod tests {
                 address: Address::ZERO,
                 endpoint: String::new(),
                 chains: vec![],
+                region: None,
+                capabilities: vec![CapabilityTier::Standard],
                 qos: ProviderQos::default(),
             }),
             latency_ms: 10,
@@ -457,5 +488,21 @@ mod tests {
         assert!(!requires_quorum("eth_blockNumber"));
         assert!(!requires_quorum("eth_getBalance"));
         assert!(!requires_quorum("eth_sendRawTransaction"));
+    }
+
+    #[test]
+    fn required_tier_debug_methods() {
+        assert_eq!(required_tier("debug_traceCall"), CapabilityTier::Debug);
+        assert_eq!(required_tier("debug_traceTransaction"), CapabilityTier::Debug);
+        assert_eq!(required_tier("trace_call"), CapabilityTier::Debug);
+        assert_eq!(required_tier("trace_replayTransaction"), CapabilityTier::Debug);
+    }
+
+    #[test]
+    fn required_tier_standard_methods() {
+        assert_eq!(required_tier("eth_call"), CapabilityTier::Standard);
+        assert_eq!(required_tier("eth_getBalance"), CapabilityTier::Standard);
+        assert_eq!(required_tier("eth_getLogs"), CapabilityTier::Standard);
+        assert_eq!(required_tier("net_version"), CapabilityTier::Standard);
     }
 }

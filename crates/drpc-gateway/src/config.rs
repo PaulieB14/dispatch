@@ -2,6 +2,21 @@ use alloy_primitives::Address;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+/// RPC capability tier a provider can serve.
+///
+/// Providers declare which tiers they support; the gateway filters the candidate
+/// pool to only providers capable of serving a given request.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CapabilityTier {
+    /// Standard full-node methods — last ~128 blocks.
+    Standard,
+    /// Full historical state — archive node required.
+    Archive,
+    /// `debug_*` and `trace_*` methods — debug API required.
+    Debug,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub gateway: GatewayConfig,
@@ -22,6 +37,9 @@ pub struct GatewayConfig {
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Geographic region of this gateway instance (e.g. "us-east", "eu-west").
+    /// Used to prefer nearby providers before latency data is established.
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -58,6 +76,11 @@ pub struct QosConfig {
     /// Number of providers to dispatch to concurrently (first response wins).
     #[serde(default = "default_concurrent_k")]
     pub concurrent_k: usize,
+    /// Score bonus added for providers in the same region as this gateway.
+    /// Helps bootstrap traffic to nearby providers before latency data exists.
+    /// Default: 0.15 (adds 15 percentage points to same-region provider weight).
+    #[serde(default = "default_region_bonus")]
+    pub region_bonus: f64,
 }
 
 /// Static provider configuration.
@@ -71,6 +94,12 @@ pub struct ProviderConfig {
     pub endpoint: String,
     /// Chain IDs this provider is registered to serve.
     pub chains: Vec<u64>,
+    /// Geographic region of this provider (e.g. "us-east", "eu-west").
+    /// Matched against `[gateway].region` for proximity-aware routing.
+    pub region: Option<String>,
+    /// Capability tiers this provider supports. Defaults to `[standard]`.
+    #[serde(default = "default_capabilities")]
+    pub capabilities: Vec<CapabilityTier>,
 }
 
 /// Dynamic provider discovery via The Graph subgraph.
@@ -104,6 +133,10 @@ impl Config {
     }
 }
 
+fn default_capabilities() -> Vec<CapabilityTier> {
+    vec![CapabilityTier::Standard]
+}
+fn default_region_bonus() -> f64 { 0.15 }
 fn default_host() -> String { "0.0.0.0".to_string() }
 fn default_port() -> u16 { 8080 }
 fn default_base_price_per_cu() -> u128 { 4_000_000_000_000 } // 4e-6 GRT per CU

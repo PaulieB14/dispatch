@@ -40,7 +40,7 @@ pub fn eip712_hash_raw(domain_sep: B256, struct_hash: B256) -> B256 {
     buf[1] = 0x01;
     buf[2..34].copy_from_slice(domain_sep.as_slice());
     buf[34..66].copy_from_slice(struct_hash.as_slice());
-    keccak256(&buf)
+    keccak256(buf)
 }
 
 /// Recover the Ethereum address that produced `sig_hex` over the given `hash`.
