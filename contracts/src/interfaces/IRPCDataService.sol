@@ -43,6 +43,7 @@ interface IRPCDataService {
     event ChainRemoved(uint256 indexed chainId);
     event ProviderRegistered(address indexed provider, string endpoint, string geoHash);
     event ProviderDeregistered(address indexed provider);
+    event PaymentsDestinationSet(address indexed provider, address indexed destination);
     event ServiceStarted(
         address indexed provider, uint64 indexed chainId, CapabilityTier tier, string endpoint
     );
@@ -63,6 +64,7 @@ interface IRPCDataService {
     error ThawingPeriodTooShort(uint64 required, uint64 actual);
     error RegistrationNotFound(address provider, uint64 chainId, CapabilityTier tier);
     error InvalidFraudProof(string reason);
+    error InvalidPaymentType();
     error SlashNotImplemented();
 
     // -------------------------------------------------------------------------
@@ -85,6 +87,16 @@ interface IRPCDataService {
     function setMinThawingPeriod(uint64 period) external;
 
     // -------------------------------------------------------------------------
+    // Provider operations
+    // -------------------------------------------------------------------------
+
+    /// @notice Update the address that receives collected GRT fees.
+    /// @dev Defaults to serviceProvider at registration. Allows separation of
+    ///      operator key (used for signing) from payment wallet (cold storage etc.).
+    ///      Takes effect on the next collect() call.
+    function setPaymentsDestination(address destination) external;
+
+    // -------------------------------------------------------------------------
     // Provider views
     // -------------------------------------------------------------------------
 
@@ -96,4 +108,6 @@ interface IRPCDataService {
         returns (ChainRegistration[] memory);
 
     function activeRegistrationCount(address provider) external view returns (uint256);
+
+    function paymentsDestination(address provider) external view returns (address);
 }

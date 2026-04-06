@@ -11,8 +11,11 @@ Aligns with The Graph's 2026 Technical Roadmap ("Experimental JSON-RPC Data Serv
 - Chains: Ethereum mainnet + Arbitrum One + Optimism/Base
 - Methods: Tier 1 Merkle-provable + essential Tier 2 quorum-verified (see RFC for method list)
 - Payments: TAP/GraphTally as-is, flat rate ~$40/million requests
-- On-chain: `RPCDataService.sol` — register, startService, stopService, collect
+- On-chain: `RPCDataService.sol` — register, startService, stopService, collect, setPaymentsDestination
+  - `paymentsDestination` mapping: decouple payment recipient from operator key (SubstreamsDataService pattern)
+  - Explicit `QueryFee` enforcement in `collect()` — revert on other payment types
 - Off-chain: `drpc-indexer-service` (Rust) — JSON-RPC proxy with TAP middleware
+- Integration test suite: mock `HorizonStaking` only; use production `GraphTallyCollector` / `PaymentsEscrow` / `GraphPayments` (SubstreamsDataService approach — catches real EIP-712 and RAV bugs)
 - No slashing disputes, no WebSocket, no archive, no debug/trace
 
 ## Phase 2 — Production Foundation (Q4 2026)

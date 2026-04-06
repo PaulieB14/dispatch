@@ -132,6 +132,7 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
     // Provider state
     mapping(address => bool)                  public registeredProviders;
     mapping(address => ChainRegistration[])   public providerChains;
+    mapping(address => address)               public paymentsDestination; // provider → payment recipient
 
     // Protocol parameters
     uint256 public minimumProvisionTokens;   // Default: 25,000 GRT
@@ -145,6 +146,7 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
     function collect(address serviceProvider, bytes calldata data) external override returns (uint256);
     function slash(address serviceProvider, bytes calldata data) external override;     // Phase 2
     function acceptProvisionPendingParameters(address sp, bytes calldata) external override;
+    function setPaymentsDestination(address destination) external;   // Decouple payment recipient from operator key
 
     // Governance
     function addChain(uint256 chainId, ChainConfig calldata config) external onlyGovernor;
@@ -152,13 +154,20 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
 }
 ```
 
+> **Learnt from SubstreamsDataService:** The `paymentsDestination` mapping decouples the service provider's on-chain identity (operator key, used for signing) from the address that receives collected GRT. Operators running multiple services or using cold-storage payment wallets need this separation. SubstreamsDataService implements it as a simple `setPaymentsDestination()` call post-registration.
+
 ### 4.2 Function specifications
 
 **register(serviceProvider, data)**
-- `data`: `abi.encode(string endpoint, string geoHash)`
+- `data`: `abi.encode(string endpoint, string geoHash, address paymentsDestination)`
 - Validates: provision ≥ `minimumProvisionTokens`, thawing period ≥ `minimumThawingPeriod`
-- Stores provider metadata
+- Stores provider metadata; sets `paymentsDestination[serviceProvider]` (defaults to `serviceProvider` if zero address)
 - Emits `ServiceProviderRegistered`
+
+**setPaymentsDestination(destination)**
+- Callable by a registered provider (or their authorised operator) at any time
+- Updates `paymentsDestination[msg.sender]` — takes effect on the next `collect()` call
+- Emits `PaymentsDestinationSet(serviceProvider, destination)`
 
 **startService(serviceProvider, data)**
 - `data`: `abi.encode(uint64 chainId, uint8 tier, string endpoint)`
@@ -172,8 +181,10 @@ contract RPCDataService is DataService, DataServicePausable, DataServiceFees {
 - Emits `ServiceStopped`
 
 **collect(serviceProvider, data)**
-- `data`: ABI-encoded `SignedRAV`
+- `data`: ABI-encoded `(SignedRAV, uint256 tokensToCollect)`
+- Reverts with `InvalidPaymentType` if `paymentType != QueryFee` — explicit enforcement, not silent pass-through (learnt from SubstreamsDataService)
 - Calls `GraphTallyCollector.collect()` to verify EIP-712 sig and pull from escrow
+- Routes collected GRT to `paymentsDestination[serviceProvider]` (not necessarily `serviceProvider`)
 - Locks `fees * stakeToFeesRatio` via `_createStakeClaim()` with `releaseAt = block.timestamp + thawingPeriod`
 - Routes through `GraphPayments` for distribution
 - Returns tokens collected
@@ -403,7 +414,24 @@ TAP v2 receipt `metadata` field: `abi.encode(uint32 cuWeight, bytes4 methodSelec
 
 ---
 
-## 10. Deployed contract addresses
+## 10. Integration testing strategy
+
+Learnt from SubstreamsDataService's test architecture: **mock `HorizonStaking` only; use production `GraphTallyCollector`, `PaymentsEscrow`, and `GraphPayments`.**
+
+Rationale: The EIP-712 signing, signer authorisation, cumulative RAV tracking, and token distribution logic live in those three contracts. Mocking them masks bugs that only surface against the real implementation — exactly the class of failure that kills an integration during testnet launch.
+
+Test environment:
+- Anvil local chain, deterministic accounts with fixed private keys
+- Deploy mock: `MockHorizonStaking`, `MockController` (stubs only)
+- Deploy production: `GraphTallyCollector`, `PaymentsEscrow`, `GraphPayments` from Horizon package
+- Deploy `RPCDataService` against above
+- Go/Rust integration tests validate EIP-712 hash compatibility across implementations
+
+Reference: `github.com/graphprotocol/substreams-data-service/test/integration/` — especially `rav_test.go` for Go↔Solidity hash/signature cross-validation and `substreams_flow_test.go` for end-to-end RAV flow.
+
+---
+
+## 11. Deployed contract addresses
 
 ### Arbitrum One (chain ID 42161) — all Horizon contracts
 
@@ -431,7 +459,7 @@ TAP aggregator: `https://tap-aggregator.network.thegraph.com`
 
 ---
 
-## 11. Open questions
+## 12. Open questions
 
 | # | Question | Recommended position |
 |---|---|---|
@@ -446,11 +474,12 @@ TAP aggregator: `https://tap-aggregator.network.thegraph.com`
 
 ---
 
-## 12. Source repositories
+## 13. Source repositories
 
 | Repo | Contents |
 |---|---|
 | `github.com/graphprotocol/contracts` | Horizon contracts (`packages/horizon/`), SubgraphService (`packages/subgraph-service/`) |
+| `github.com/graphprotocol/substreams-data-service` | Second Horizon data service (pre-launch); reference for `paymentsDestination` pattern, integration test strategy, provider gateway architecture |
 | `github.com/graphprotocol/indexer-rs` | `indexer-service-rs`, `indexer-tap-agent` — Rust workspace |
 | `github.com/graphprotocol/indexer` | `indexer-agent` — TypeScript |
 | `github.com/edgeandnode/gateway` | Production gateway — Rust, MIT |
@@ -458,7 +487,7 @@ TAP aggregator: `https://tap-aggregator.network.thegraph.com`
 
 ---
 
-## 13. Competitive landscape
+## 14. Competitive landscape
 
 | Protocol | Verification | Token | Chains | Notes |
 |---|---|---|---|---|

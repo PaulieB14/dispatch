@@ -91,11 +91,14 @@ Routes: `POST /rpc/{chain_id}` · `GET /health` · `GET /providers/{chain_id}`
 On-chain contract inheriting Horizon's `DataService` + `DataServiceFees` + `DataServicePausable`.
 
 Key functions:
-- `register` — validates provision (≥ 25,000 GRT, ≥ 14-day thawing), stores provider metadata
+- `register` — validates provision (≥ 25,000 GRT, ≥ 14-day thawing), stores provider metadata and initial `paymentsDestination`
+- `setPaymentsDestination` — decouple the GRT payment recipient from the operator signing key (pattern from [`substreams-data-service`](https://github.com/graphprotocol/substreams-data-service))
 - `startService` — activates provider for a `(chainId, capabilityTier)` pair
 - `stopService` / `deregister` — lifecycle management
-- `collect` — decodes `SignedRAV`, routes through `GraphTallyCollector`, locks `fees × 5` in stake claims
+- `collect` — enforces `QueryFee` payment type; decodes `SignedRAV`, routes through `GraphTallyCollector`, locks `fees × 5` in stake claims
 - `slash` — Phase 2: Tier 1 Merkle fraud proof slashing
+
+Reference implementations: [`SubgraphService`](https://github.com/graphprotocol/contracts/tree/main/packages/subgraph-service) (live on Arbitrum One) and [`substreams-data-service`](https://github.com/graphprotocol/substreams-data-service) (pre-launch).
 
 ---
 

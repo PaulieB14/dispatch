@@ -30,10 +30,11 @@
 On-chain contract implementing `IDataService`. Inherits `DataService` + `DataServiceFees` + `DataServicePausable`.
 
 Key responsibilities:
-- `register` — validate provision (≥25,000 GRT/chain, ≥14d thawing), store provider metadata
+- `register` — validate provision (≥25,000 GRT/chain, ≥14d thawing), store provider metadata, set `paymentsDestination` (defaults to `serviceProvider`)
+- `setPaymentsDestination` — decouple payment recipient from operator key (learnt from SubstreamsDataService; operators may use separate cold-storage wallets)
 - `startService` — register provider for a `(chainId, capabilityTier, endpoint)` tuple
 - `stopService` — deactivate chain registration
-- `collect` — decode `SignedRAV`, call `GraphTallyCollector`, lock stake at 5:1 ratio
+- `collect` — enforce `QueryFee` payment type explicitly (revert on others); decode `SignedRAV`, call `GraphTallyCollector`, route fees to `paymentsDestination`, lock stake at 5:1 ratio
 - `slash` — Phase 2: Tier 1 fraud proof handling
 - On-chain chain registry: `mapping(uint256 => ChainConfig)` with governance allowlist
 
@@ -76,6 +77,16 @@ Extension to the existing `edgeandnode/gateway`:
 For Tier 1 Merkle proof verification, gateway needs trusted block hashes:
 - Options: embedded light client, checkpoint service, or Ethereum consensus API
 - Phase 1: checkpoint service (simpler); Phase 3: full light client
+
+---
+
+## Integration testing strategy
+
+**Mock `HorizonStaking` only. Use production `GraphTallyCollector`, `PaymentsEscrow`, and `GraphPayments`.**
+
+Learnt from `github.com/graphprotocol/substreams-data-service`: mocking the payment contracts hides EIP-712 hashing bugs, signer authorisation failures, and RAV replay issues that only surface against the real contracts. The staking mock is safe because provision validation logic is simple and deterministic.
+
+Test environment: Anvil + `MockHorizonStaking` + `MockController` + production Horizon payment contracts. Rust integration tests should validate EIP-712 hash/signature compatibility between Rust signing code and Solidity verification, mirroring SubstreamsDataService's `rav_test.go` approach.
 
 ---
 

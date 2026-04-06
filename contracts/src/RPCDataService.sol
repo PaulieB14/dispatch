@@ -56,6 +56,11 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
     /// @notice Whether a provider has registered with this service.
     mapping(address => bool) public registeredProviders;
 
+    /// @notice Address that receives collected GRT for each provider.
+    /// @dev Defaults to the provider address. Separates the operator key
+    ///      (used for signing) from the payment wallet (cold storage etc.).
+    mapping(address => address) public paymentsDestination;
+
     /// @notice Chain registrations per provider (active and historical).
     mapping(address => ChainRegistration[]) internal _providerChains;
 
@@ -136,8 +141,10 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
         _checkProvisionTokens(serviceProvider);
         _checkProvisionParameters(serviceProvider, false);
 
-        (string memory endpoint, string memory geoHash) = abi.decode(data, (string, string));
+        (string memory endpoint, string memory geoHash, address dest) =
+            abi.decode(data, (string, string, address));
         registeredProviders[serviceProvider] = true;
+        paymentsDestination[serviceProvider] = dest == address(0) ? serviceProvider : dest;
 
         emit ProviderRegistered(serviceProvider, endpoint, geoHash);
     }
@@ -153,6 +160,14 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
 
         registeredProviders[serviceProvider] = false;
         emit ProviderDeregistered(serviceProvider);
+    }
+
+    /// @inheritdoc IRPCDataService
+    function setPaymentsDestination(address destination) external {
+        if (!registeredProviders[msg.sender]) revert ProviderNotRegistered(msg.sender);
+        address dest = destination == address(0) ? msg.sender : destination;
+        paymentsDestination[msg.sender] = dest;
+        emit PaymentsDestinationSet(msg.sender, dest);
     }
 
     /// @notice Activate RPC service for a specific chain and capability tier.
@@ -233,6 +248,10 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
         whenNotPaused
         returns (uint256 fees)
     {
+        // Only QueryFee is supported. Explicit revert prevents silent mis-routing
+        // if the payment infrastructure ever routes other payment types here.
+        if (paymentType != IGraphPayments.PaymentTypes.QueryFee) revert InvalidPaymentType();
+
         if (!registeredProviders[serviceProvider]) revert ProviderNotRegistered(serviceProvider);
 
         (IGraphTallyCollector.SignedRAV memory signedRav, uint256 tokensToCollect) =
@@ -248,6 +267,7 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
 
         // Collect via GraphTallyCollector → PaymentsEscrow → GraphPayments.
         // The RAV's dataService field must equal address(this) — enforced by GraphTallyCollector.
+        // Fees are routed to paymentsDestination, not necessarily serviceProvider.
         fees = GRAPH_TALLY_COLLECTOR.collect(
             paymentType,
             abi.encode(signedRav, uint256(0)), // dataServiceCut=0 for Phase 1 (no curation)

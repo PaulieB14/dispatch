@@ -149,22 +149,33 @@ contract RPCDataServiceTest is Test {
     // -------------------------------------------------------------------------
 
     function test_register_succeeds() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         assertTrue(service.isRegistered(provider));
+    }
+
+    function test_register_defaultsPaymentsDestinationToProvider() public {
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
+        assertEq(service.paymentsDestination(provider), provider);
+    }
+
+    function test_register_setsCustomPaymentsDestination() public {
+        address wallet = makeAddr("paymentWallet");
+        _register(provider, "https://rpc.example.com", "u1hx", wallet);
+        assertEq(service.paymentsDestination(provider), wallet);
     }
 
     function test_register_emitsEvent() public {
         vm.expectEmit(true, false, false, true);
         emit IRPCDataService.ProviderRegistered(provider, "https://rpc.example.com", "u1hx");
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
     }
 
     function test_register_revertIfAlreadyRegistered() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         vm.expectRevert(
             abi.encodeWithSelector(IRPCDataService.ProviderAlreadyRegistered.selector, provider)
         );
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
     }
 
     function test_register_revertIfInsufficientProvision() public {
@@ -173,7 +184,7 @@ contract RPCDataServiceTest is Test {
 
         vm.prank(poorProvider);
         vm.expectRevert(); // ProvisionManagerInvalidValue("tokens", ...)
-        service.register(poorProvider, abi.encode("https://rpc.example.com", "u1hx"));
+        service.register(poorProvider, abi.encode("https://rpc.example.com", "u1hx", address(0)));
     }
 
     function test_register_revertIfThawingPeriodTooShort() public {
@@ -182,7 +193,50 @@ contract RPCDataServiceTest is Test {
 
         vm.prank(shortProvider);
         vm.expectRevert(); // ProvisionManagerInvalidValue("thawingPeriod", ...)
-        service.register(shortProvider, abi.encode("https://rpc.example.com", "u1hx"));
+        service.register(shortProvider, abi.encode("https://rpc.example.com", "u1hx", address(0)));
+    }
+
+    // -------------------------------------------------------------------------
+    // setPaymentsDestination
+    // -------------------------------------------------------------------------
+
+    function test_setPaymentsDestination_updatesDestination() public {
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
+        address newWallet = makeAddr("newWallet");
+
+        vm.prank(provider);
+        service.setPaymentsDestination(newWallet);
+
+        assertEq(service.paymentsDestination(provider), newWallet);
+    }
+
+    function test_setPaymentsDestination_zeroAddressResetsToSelf() public {
+        address wallet = makeAddr("wallet");
+        _register(provider, "https://rpc.example.com", "u1hx", wallet);
+
+        vm.prank(provider);
+        service.setPaymentsDestination(address(0));
+
+        assertEq(service.paymentsDestination(provider), provider);
+    }
+
+    function test_setPaymentsDestination_emitsEvent() public {
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
+        address newWallet = makeAddr("newWallet");
+
+        vm.expectEmit(true, true, false, false);
+        emit IRPCDataService.PaymentsDestinationSet(provider, newWallet);
+
+        vm.prank(provider);
+        service.setPaymentsDestination(newWallet);
+    }
+
+    function test_setPaymentsDestination_revertIfNotRegistered() public {
+        vm.prank(provider);
+        vm.expectRevert(
+            abi.encodeWithSelector(IRPCDataService.ProviderNotRegistered.selector, provider)
+        );
+        service.setPaymentsDestination(makeAddr("wallet"));
     }
 
     // -------------------------------------------------------------------------
@@ -190,7 +244,7 @@ contract RPCDataServiceTest is Test {
     // -------------------------------------------------------------------------
 
     function test_startService_succeeds() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         _startService(provider, CHAIN_ETH_MAINNET, IRPCDataService.CapabilityTier.Standard, "https://rpc.example.com");
 
         IRPCDataService.ChainRegistration[] memory regs = service.getChainRegistrations(provider);
@@ -200,7 +254,7 @@ contract RPCDataServiceTest is Test {
     }
 
     function test_startService_revertIfChainNotSupported() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
 
         vm.prank(provider);
         vm.expectRevert(
@@ -224,7 +278,7 @@ contract RPCDataServiceTest is Test {
     }
 
     function test_stopService_deactivatesRegistration() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         _startService(provider, CHAIN_ETH_MAINNET, IRPCDataService.CapabilityTier.Standard, "https://rpc.example.com");
 
         vm.prank(provider);
@@ -239,7 +293,7 @@ contract RPCDataServiceTest is Test {
     }
 
     function test_stopService_revertIfNotFound() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
 
         vm.prank(provider);
         vm.expectRevert(
@@ -257,7 +311,7 @@ contract RPCDataServiceTest is Test {
     }
 
     function test_deregister_revertIfActiveRegistrationsExist() public {
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         _startService(provider, CHAIN_ETH_MAINNET, IRPCDataService.CapabilityTier.Standard, "https://rpc.example.com");
 
         vm.prank(provider);
@@ -277,7 +331,7 @@ contract RPCDataServiceTest is Test {
 
         vm.prank(provider);
         vm.expectRevert(); // Pausable: paused
-        service.register(provider, abi.encode("https://rpc.example.com", "u1hx"));
+        service.register(provider, abi.encode("https://rpc.example.com", "u1hx", address(0)));
     }
 
     function test_unpause_allowsRegister() public {
@@ -286,7 +340,7 @@ contract RPCDataServiceTest is Test {
         vm.prank(pauseGuardian);
         service.unpause();
 
-        _register(provider, "https://rpc.example.com", "u1hx");
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
         assertTrue(service.isRegistered(provider));
     }
 
@@ -294,9 +348,9 @@ contract RPCDataServiceTest is Test {
     // Helpers
     // -------------------------------------------------------------------------
 
-    function _register(address _provider, string memory endpoint, string memory geo) internal {
+    function _register(address _provider, string memory endpoint, string memory geo, address dest) internal {
         vm.prank(_provider);
-        service.register(_provider, abi.encode(endpoint, geo));
+        service.register(_provider, abi.encode(endpoint, geo, dest));
     }
 
     function _startService(
