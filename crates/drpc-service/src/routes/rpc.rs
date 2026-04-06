@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::{
     db,
     error::ServiceError,
-    rpc::{proxy, types::JsonRpcRequest, verify::tier_for_method},
+    rpc::{proxy, types::JsonRpcRequest, verify::{extract_block_context, tier_for_method}},
     server::AppState,
     tap,
 };
@@ -82,14 +82,19 @@ async fn rpc_handler(
         .unwrap_or_default();
     let response_bytes = serde_json::to_vec(&response).unwrap_or_default();
 
-    // TODO: extract block_number + block_hash from response for block-anchored methods
+    let (block_number, block_hash) = response
+        .result
+        .as_ref()
+        .map(|r| extract_block_context(&request.method, r))
+        .unwrap_or((0, alloy_primitives::B256::ZERO));
+
     let attestation = state.attester.attest(
         chain_id,
         &request.method,
         &params_bytes,
         &response_bytes,
-        0,
-        alloy_primitives::B256::ZERO,
+        block_number,
+        block_hash,
     )?;
 
     let mut http_resp = Json(response).into_response();
