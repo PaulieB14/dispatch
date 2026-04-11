@@ -18,6 +18,9 @@ dataSources:
         - Indexer
         - ChainRegistration
         - SupportedChain
+        - Protocol
+        - ChainProposal
+        - RewardBalance
       abis:
         - name: RPCDataService
           file: ./abis/RPCDataService.json
@@ -26,6 +29,12 @@ dataSources:
           handler: handleChainAdded
         - event: ChainRemoved(indexed uint256)
           handler: handleChainRemoved
+        - event: ChainProposed(indexed uint256,indexed address,uint256)
+          handler: handleChainProposed
+        - event: ChainBondReleased(indexed uint256,indexed address,uint256)
+          handler: handleChainBondReleased
+        - event: ChainBondForfeited(indexed uint256,uint256)
+          handler: handleChainBondForfeited
         - event: ProviderRegistered(indexed address,string,string)
           handler: handleProviderRegistered
         - event: ProviderDeregistered(indexed address)
@@ -38,4 +47,14 @@ dataSources:
           handler: handleServiceStopped
         - event: FraudProofSubmitted(indexed address,indexed address,uint256)
           handler: handleFraudProofSubmitted
+        - event: MinThawingPeriodSet(uint64)
+          handler: handleMinThawingPeriodSet
+        - event: RewardsAccrued(indexed address,uint256)
+          handler: handleRewardsAccrued
+        - event: RewardsClaimed(indexed address,uint256)
+          handler: handleRewardsClaimed
+        - event: RewardsDeposited(uint256)
+          handler: handleRewardsDeposited
+        - event: RewardsWithdrawn(uint256)
+          handler: handleRewardsWithdrawn
       file: ./src/mapping.ts

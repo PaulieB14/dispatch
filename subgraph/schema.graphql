@@ -33,3 +33,44 @@ type SupportedChain @entity {
   minProvisionTokens: BigInt!
   updatedAt: BigInt!
 }
+
+" Protocol-level aggregate stats — singleton, id is always '1' "
+type Protocol @entity {
+  id: ID!
+  " Total number of ever-registered providers "
+  totalIndexers: Int!
+  " Total active chain/tier registrations across all providers "
+  totalActiveRegistrations: Int!
+  " Current GRT balance of the on-chain rewards pool "
+  rewardsPool: BigInt!
+  " Cumulative GRT accrued to providers across all time "
+  totalRewardsAccrued: BigInt!
+  " Current minimum thawing period enforced by governance (seconds) "
+  minThawingPeriod: BigInt!
+  updatedAt: BigInt!
+}
+
+" Pending permissionless chain proposal "
+type ChainProposal @entity {
+  " chainId as string "
+  id: ID!
+  chainId: BigInt!
+  proposer: Bytes!
+  bondAmount: BigInt!
+  proposedAt: BigInt!
+  " null until resolved "
+  resolvedAt: BigInt
+  approved: Boolean
+}
+
+" Per-recipient GRT reward balance — keyed by paymentsDestination address "
+type RewardBalance @entity {
+  " recipient address as hex string "
+  id: ID!
+  recipient: Bytes!
+  " Currently pending (accrued but not yet claimed) GRT "
+  pending: BigInt!
+  " Total GRT claimed across all time "
+  totalClaimed: BigInt!
+  updatedAt: BigInt!
+}

@@ -169,7 +169,7 @@ contract SlashErrorPathTest is Test {
         MockControllerForSlash ctrl = new MockControllerForSlash(address(staking));
         ctrl.init(address(1)); // dummy for non-staking slots
 
-        service = new RPCDataService(owner, address(ctrl), address(0), guardian);
+        service = new RPCDataService(owner, address(ctrl), address(0), guardian, address(0));
 
         staking.setProvision(provider, address(service), PROVISION, THAWING);
 
