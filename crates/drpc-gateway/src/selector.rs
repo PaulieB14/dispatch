@@ -91,6 +91,7 @@ mod tests {
             chains: vec![1],
             region: None,
             capabilities: vec![CapabilityTier::Standard],
+            chain_capabilities: std::collections::HashMap::new(),
             qos: ProviderQos::default(),
         })
     }
@@ -103,6 +104,7 @@ mod tests {
             chains: vec![1],
             region: Some(region.to_string()),
             capabilities: vec![CapabilityTier::Standard],
+            chain_capabilities: std::collections::HashMap::new(),
             qos: ProviderQos::default(),
         })
     }

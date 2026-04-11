@@ -47,5 +47,12 @@ address      = "0xYOUR_INDEXER_2_ADDRESS"
 endpoint     = "https://rpc2.example.com"
 chains       = [1, 42161]
 region       = "us-east"
-# This provider also runs an archive node and Geth debug APIs:
+# Global capability shorthand — same tiers applied to all chains:
 # capabilities = ["standard", "archive", "debug"]
+#
+# Per-chain override (takes precedence over global `capabilities` when non-empty).
+# Use when a provider has different tiers on different chains — e.g. archive on
+# Ethereum but standard-only on Arbitrum:
+# [providers.chain_capabilities]
+# 1     = ["standard", "archive"]
+# 42161 = ["standard"]

@@ -3,6 +3,7 @@ use std::{net::SocketAddr, sync::Arc, time::Instant};
 use alloy_primitives::Bytes;
 use axum::{
     extract::{ConnectInfo, Path, State},
+    http::HeaderMap,
     response::{IntoResponse, Response},
     routing::post,
     Json, Router,
@@ -16,7 +17,25 @@ use crate::{config::CapabilityTier, error::GatewayError, metrics, registry::Prov
 use drpc_tap::create_receipt;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/rpc/{chain_id}", post(rpc_handler))
+    Router::new()
+        .route("/rpc/{chain_id}", post(rpc_handler))
+        .route("/rpc", post(rpc_handler_unified))
+}
+
+/// Unified multi-chain endpoint — chain selected via the `X-Chain-Id` header.
+/// Defaults to Ethereum mainnet (chain ID 1) when the header is absent or unparseable.
+async fn rpc_handler_unified(
+    state: State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Json<Value>,
+) -> Result<Response, GatewayError> {
+    let chain_id: u64 = headers
+        .get("x-chain-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    rpc_handler(state, Path(chain_id), ConnectInfo(peer), body).await
 }
 
 // ---------------------------------------------------------------------------
@@ -65,15 +84,50 @@ fn requires_quorum(method: &str) -> bool {
     matches!(method, "eth_call" | "eth_getLogs")
 }
 
-/// Map a JSON-RPC method to the minimum capability tier required to serve it.
-fn required_tier(method: &str) -> CapabilityTier {
+/// Returns true if the request targets a specific historical block, requiring
+/// an Archive-tier provider. Standard nodes only retain ~128 recent blocks.
+fn requires_archive(method: &str, params: &Option<Value>) -> bool {
+    fn is_historical(tag: &Value) -> bool {
+        match tag {
+            Value::String(s) => !matches!(s.as_str(), "latest" | "pending" | "safe" | "finalized"),
+            Value::Number(_) => true,
+            _ => false,
+        }
+    }
+
+    let Some(Value::Array(arr)) = params.as_ref() else {
+        return false;
+    };
+
+    match method {
+        // blockTag is the second parameter (index 1).
+        "eth_getBalance" | "eth_getCode" | "eth_getTransactionCount" | "eth_call" => {
+            arr.get(1).is_some_and(is_historical)
+        }
+        // blockTag is the third parameter (index 2).
+        "eth_getStorageAt" => arr.get(2).is_some_and(is_historical),
+        // blockTag is the first parameter (index 0).
+        "eth_getBlockByNumber" => arr.get(0).is_some_and(is_historical),
+        // Filter object may contain fromBlock / toBlock.
+        "eth_getLogs" => {
+            if let Some(Value::Object(filter)) = arr.get(0) {
+                filter.get("fromBlock").is_some_and(is_historical)
+                    || filter.get("toBlock").is_some_and(is_historical)
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Map a JSON-RPC method + params to the minimum capability tier required to serve it.
+fn required_tier(method: &str, params: &Option<Value>) -> CapabilityTier {
     if method.starts_with("debug_") || method.starts_with("trace_") {
         CapabilityTier::Debug
+    } else if requires_archive(method, params) {
+        CapabilityTier::Archive
     } else {
-        // Archive detection requires inspecting block parameters, which is
-        // expensive and context-dependent. Standard tier covers all other
-        // methods; callers that need archive routing should use the
-        // /rpc/{chain_id}/archive endpoint (Phase 3).
         CapabilityTier::Standard
     }
 }
@@ -153,11 +207,13 @@ async fn process_request(
             .providers_for_chain(chain_id)
             .ok_or(GatewayError::UnsupportedChain(chain_id))?;
 
-        // Filter to providers that support the required capability tier.
-        let tier = required_tier(&request.method);
+        // Filter to providers that support the required capability tier for this chain.
+        let tier = required_tier(&request.method, &request.params);
         let capable: Vec<_> = providers
             .iter()
-            .filter(|p| p.capabilities.contains(&tier))
+            .filter(|p| p.chain_capabilities
+                .get(&chain_id)
+                .map_or(false, |caps| caps.contains(&tier)))
             .cloned()
             .collect();
 
@@ -449,6 +505,7 @@ mod tests {
                 chains: vec![],
                 region: None,
                 capabilities: vec![CapabilityTier::Standard],
+                chain_capabilities: std::collections::HashMap::new(),
                 qos: ProviderQos::default(),
             }),
             latency_ms: 10,
@@ -492,17 +549,55 @@ mod tests {
 
     #[test]
     fn required_tier_debug_methods() {
-        assert_eq!(required_tier("debug_traceCall"), CapabilityTier::Debug);
-        assert_eq!(required_tier("debug_traceTransaction"), CapabilityTier::Debug);
-        assert_eq!(required_tier("trace_call"), CapabilityTier::Debug);
-        assert_eq!(required_tier("trace_replayTransaction"), CapabilityTier::Debug);
+        assert_eq!(required_tier("debug_traceCall", &None), CapabilityTier::Debug);
+        assert_eq!(required_tier("debug_traceTransaction", &None), CapabilityTier::Debug);
+        assert_eq!(required_tier("trace_call", &None), CapabilityTier::Debug);
+        assert_eq!(required_tier("trace_replayTransaction", &None), CapabilityTier::Debug);
     }
 
     #[test]
     fn required_tier_standard_methods() {
-        assert_eq!(required_tier("eth_call"), CapabilityTier::Standard);
-        assert_eq!(required_tier("eth_getBalance"), CapabilityTier::Standard);
-        assert_eq!(required_tier("eth_getLogs"), CapabilityTier::Standard);
-        assert_eq!(required_tier("net_version"), CapabilityTier::Standard);
+        let latest = Some(json!(["0xdeadbeef", "latest"]));
+        assert_eq!(required_tier("eth_call", &latest), CapabilityTier::Standard);
+        assert_eq!(required_tier("eth_getBalance", &latest), CapabilityTier::Standard);
+        assert_eq!(required_tier("eth_getLogs", &None), CapabilityTier::Standard);
+        assert_eq!(required_tier("net_version", &None), CapabilityTier::Standard);
+    }
+
+    #[test]
+    fn required_tier_archive_methods() {
+        // Hex block numbers → archive.
+        let params_idx1_hex = Some(json!(["0xdeadbeef", "0x100"]));
+        assert_eq!(required_tier("eth_getBalance", &params_idx1_hex), CapabilityTier::Archive);
+        assert_eq!(required_tier("eth_getCode", &params_idx1_hex), CapabilityTier::Archive);
+        assert_eq!(required_tier("eth_getTransactionCount", &params_idx1_hex), CapabilityTier::Archive);
+
+        // "earliest" → archive.
+        let params_earliest = Some(json!(["0xdeadbeef", "earliest"]));
+        assert_eq!(required_tier("eth_getBalance", &params_earliest), CapabilityTier::Archive);
+
+        // JSON number → archive.
+        let params_num = Some(json!(["0xdeadbeef", 1_000_000u64]));
+        assert_eq!(required_tier("eth_getBalance", &params_num), CapabilityTier::Archive);
+
+        // eth_getStorageAt — blockTag at index 2.
+        let storage = Some(json!(["0xdeadbeef", "0x0", "0x100"]));
+        assert_eq!(required_tier("eth_getStorageAt", &storage), CapabilityTier::Archive);
+
+        // eth_call with historical blockTag.
+        let call = Some(json!([{"to": "0xabc", "data": "0x"}, "0x100"]));
+        assert_eq!(required_tier("eth_call", &call), CapabilityTier::Archive);
+
+        // eth_getBlockByNumber — blockTag at index 0.
+        let by_num = Some(json!(["0x100", false]));
+        assert_eq!(required_tier("eth_getBlockByNumber", &by_num), CapabilityTier::Archive);
+        let by_latest = Some(json!(["latest", false]));
+        assert_eq!(required_tier("eth_getBlockByNumber", &by_latest), CapabilityTier::Standard);
+
+        // eth_getLogs with historical fromBlock.
+        let logs = Some(json!([{"fromBlock": "0x100", "toBlock": "0x200"}]));
+        assert_eq!(required_tier("eth_getLogs", &logs), CapabilityTier::Archive);
+        let logs_latest = Some(json!([{"fromBlock": "latest", "toBlock": "latest"}]));
+        assert_eq!(required_tier("eth_getLogs", &logs_latest), CapabilityTier::Standard);
     }
 }

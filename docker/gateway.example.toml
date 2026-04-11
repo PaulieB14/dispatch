@@ -19,7 +19,7 @@ signer_private_key = "0x00000000000000000000000000000000000000000000000000000000
 data_service_address = "0x0000000000000000000000000000000000000000"
 
 # EIP-712 domain — must match the deployed GraphTallyCollector.
-eip712_domain_name = "GraphTallyCollector"
+eip712_domain_name = "TAP"
 
 # Arbitrum One (default). Override for other networks.
 # eip712_chain_id = 42161
@@ -62,4 +62,13 @@ address      = "0x0000000000000000000000000000000000000000"  # indexer's on-chai
 endpoint     = "http://drpc-service:7700"                    # base URL of drpc-service
 chains       = [1, 42161]
 # region       = "eu-west"
-# capabilities = ["standard"]         # or ["standard", "archive", "debug"]
+
+# Global capability shorthand — applied to all chains listed above.
+# capabilities = ["standard"]          # full node, last ~128 blocks
+# capabilities = ["standard", "archive", "debug"]  # archive + debug API
+
+# Per-chain capability override (populated automatically by dynamic discovery).
+# Use this in static configs when a provider has different tiers per chain.
+# [providers.chain_capabilities]
+# 1     = ["standard", "archive"]   # archive node for Ethereum mainnet
+# 42161 = ["standard"]              # standard node for Arbitrum

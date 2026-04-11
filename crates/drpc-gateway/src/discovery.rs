@@ -106,37 +106,41 @@ async fn fetch_providers(
             }
         };
 
-        // Deduplicate chain IDs — a provider may have multiple registrations
-        // per chain (one per tier), so we collect unique IDs.
-        let mut seen = std::collections::HashSet::new();
-        let chains: Vec<u64> = indexer
-            .chains
-            .iter()
-            .filter_map(|c| c.chain_id.parse::<u64>().ok())
-            .filter(|id| seen.insert(*id))
-            .collect();
+        // Build per-chain capability map from all active chain registrations.
+        // A provider may have multiple registrations per chain (one per tier),
+        // each independently activated via startService/stopService.
+        let mut chain_caps: std::collections::HashMap<u64, Vec<crate::config::CapabilityTier>> =
+            std::collections::HashMap::new();
 
-        if chains.is_empty() {
-            continue;
-        }
-
-        // Collect the union of capability tiers across all chain registrations.
-        let mut capabilities: Vec<crate::config::CapabilityTier> = Vec::new();
         for c in &indexer.chains {
+            let Ok(chain_id) = c.chain_id.parse::<u64>() else { continue };
             let tier = match c.tier {
                 0 => Some(crate::config::CapabilityTier::Standard),
                 1 => Some(crate::config::CapabilityTier::Archive),
                 2 => Some(crate::config::CapabilityTier::Debug),
-                _ => None, // tier 3 = WebSocket — transport, not a routing tier
+                _ => None, // tier 3 = WebSocket — transport layer, not a routing tier
             };
             if let Some(t) = tier {
-                if !capabilities.contains(&t) {
-                    capabilities.push(t);
+                let entry = chain_caps.entry(chain_id).or_default();
+                if !entry.contains(&t) {
+                    entry.push(t);
                 }
             }
         }
-        if capabilities.is_empty() {
-            capabilities.push(crate::config::CapabilityTier::Standard);
+
+        if chain_caps.is_empty() {
+            continue;
+        }
+
+        let chains: Vec<u64> = chain_caps.keys().copied().collect();
+        // Global capabilities = union across all chains (used as fallback).
+        let mut capabilities: Vec<crate::config::CapabilityTier> = Vec::new();
+        for caps in chain_caps.values() {
+            for t in caps {
+                if !capabilities.contains(t) {
+                    capabilities.push(t.clone());
+                }
+            }
         }
 
         providers.push(ProviderConfig {
@@ -145,6 +149,7 @@ async fn fetch_providers(
             chains,
             region: indexer.geo_hash.filter(|s| !s.is_empty()),
             capabilities,
+            chain_capabilities: chain_caps,
         });
     }
 

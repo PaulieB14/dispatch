@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use alloy_primitives::Address;
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -100,6 +102,11 @@ pub struct ProviderConfig {
     /// Capability tiers this provider supports. Defaults to `[standard]`.
     #[serde(default = "default_capabilities")]
     pub capabilities: Vec<CapabilityTier>,
+    /// Per-chain capability overrides, populated by dynamic discovery.
+    /// When non-empty, used in place of the global `capabilities` field for
+    /// per-chain tier filtering. Empty for static (TOML) provider configs.
+    #[serde(default)]
+    pub chain_capabilities: HashMap<u64, Vec<CapabilityTier>>,
 }
 
 /// Dynamic provider discovery via The Graph subgraph.

@@ -24,17 +24,28 @@ pub struct Provider {
     pub chains: Vec<u64>,
     pub region: Option<String>,
     pub capabilities: Vec<CapabilityTier>,
+    /// Per-chain capability map used for tier-aware routing.
+    /// Key = chain ID; value = tiers this provider supports on that chain.
+    pub chain_capabilities: HashMap<u64, Vec<CapabilityTier>>,
     pub qos: ProviderQos,
 }
 
 impl Provider {
     fn from_config(cfg: &ProviderConfig) -> Self {
+        // If dynamic discovery populated per-chain capabilities, use them.
+        // Otherwise derive from the global capabilities × declared chains.
+        let chain_capabilities = if cfg.chain_capabilities.is_empty() {
+            cfg.chains.iter().map(|&id| (id, cfg.capabilities.clone())).collect()
+        } else {
+            cfg.chain_capabilities.clone()
+        };
         Self {
             address: cfg.address,
             endpoint: cfg.endpoint.trim_end_matches('/').to_string(),
             chains: cfg.chains.clone(),
             region: cfg.region.clone(),
             capabilities: cfg.capabilities.clone(),
+            chain_capabilities,
             qos: ProviderQos::default(),
         }
     }

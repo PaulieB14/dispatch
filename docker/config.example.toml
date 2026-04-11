@@ -26,7 +26,7 @@ authorized_senders = [
 ]
 
 # EIP-712 domain — must match the deployed GraphTallyCollector.
-eip712_domain_name = "GraphTallyCollector"
+eip712_domain_name = "TAP"
 
 # Arbitrum One (default). Override for other networks.
 # eip712_chain_id = 42161
