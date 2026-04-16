@@ -28,13 +28,13 @@ That's the loop. Everything else — quorum verification, fraud proof slashing, 
 | Receipt signing & validation | ✅ Working — every request carries a signed EIP-712 TAP receipt |
 | Receipt persistence | ✅ Working — stored in `tap_receipts` table |
 | RAV aggregation (off-chain) | ✅ Working — gateway batches receipts into signed RAVs every 60s |
-| On-chain `collect()` | ⚠️ Code works — fails only because gateway signer has no GRT in PaymentsEscrow yet |
+| On-chain `collect()` | ✅ Working — GRT settles on-chain automatically every hour |
 | Provider on-chain registration | ✅ Confirmed on-chain |
 | `dispatch-oracle` | ❌ Not running — required for Tier 1 Merkle proof slashing |
 | Multi-provider discovery | ❌ Gateway uses static config, not dynamic subgraph discovery yet |
 | Local demo | ✅ Working — full payment loop on Anvil |
 
-The complete on-chain GRT settlement requires a consumer with GRT deposited into `PaymentsEscrow` on Arbitrum One. Once funded, `collect()` settles automatically on the next hourly cycle.
+The full payment loop is working end-to-end. Requests generate TAP receipts, the service aggregates them into RAVs every 60s, and calls `RPCDataService.collect()` every hour — pulling GRT from the consumer's escrow to the provider automatically.
 
 ---
 

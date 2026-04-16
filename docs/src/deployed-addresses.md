@@ -18,7 +18,7 @@ Subgraph: `https://api.studio.thegraph.com/query/1747796/rpc-network/v0.1.1`
 |---|---|
 | HorizonStaking | `0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03` |
 | GraphPayments | `0xb98a3D452E43e40C70F3c0B03C5c7B56A8B3b8CA` |
-| PaymentsEscrow | `0x8f477709eF277d4A880801D01A140a9CF88bA0d3` |
+| PaymentsEscrow | `0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E` |
 | GraphTallyCollector | `0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e` |
 | SubgraphService | `0xb2Bb92d0DE618878E438b55D5846cfecD9301105` |
 | DisputeManager | `0x0Ab2B043138352413Bb02e67E626a70320E3BD46` |

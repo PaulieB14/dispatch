@@ -7,7 +7,7 @@ A decentralised JSON-RPC data service built on [The Graph Protocol's Horizon fra
 
 Inspired by the [Q3 2026 "Experimental JSON-RPC Data Service"](https://thegraph.com/blog/graph-protocol-2026-technical-roadmap/) direction in The Graph's 2026 Technical Roadmap — but this codebase is an independent community effort, not an official implementation.
 
-**Implementation status:** the contract, subgraph, npm packages, and Rust binaries are all deployed. The first provider is live and serving traffic. The off-chain payment flow (receipt signing → RAV aggregation) is implemented; on-chain fee collection (`collect()`) is implemented but not yet exercised on the live provider. The oracle is not running. See [Network status](#network-status) for the honest breakdown.
+**Implementation status:** the contract, subgraph, npm packages, and Rust binaries are all deployed. The first provider is live and serving traffic. The full payment loop — receipt signing → RAV aggregation → on-chain `collect()` — is working end-to-end on the live provider. GRT settles automatically every hour. The oracle is not running. See [Network status](#network-status) for the honest breakdown.
 
 ---
 
@@ -22,18 +22,13 @@ Inspired by the [Q3 2026 "Experimental JSON-RPC Data Service"](https://thegraph.
 | Receipt signing & validation | ✅ Working — every request carries a signed EIP-712 TAP receipt |
 | Receipt persistence | ✅ Working — stored in `tap_receipts` table in postgres |
 | RAV aggregation (off-chain) | ✅ Working — gateway `/rav/aggregate` batches receipts into signed RAVs every 60s |
-| On-chain `collect()` | ⚠️ Code works, reaches the chain — fails because the gateway signer has no GRT in PaymentsEscrow (no funded consumer yet) |
+| On-chain `collect()` | ✅ Working — GRT settles on-chain automatically every hour |
 | Provider on-chain registration | ✅ Confirmed — `registeredProviders[0xb43B...] = true` on Arbitrum One |
 | `dispatch-oracle` | ❌ Not running — required for Tier 1 fraud proof slashing |
 | Multi-provider discovery | ❌ Gateway uses static provider config, not dynamic subgraph discovery |
 | Local demo | ✅ Working — full payment loop on Anvil with mock contracts |
 
-The first provider is live and verified: provider IS registered on-chain, receipts accumulate correctly, and RAVs are being aggregated. The final step — on-chain GRT settlement — requires a consumer with GRT deposited into `PaymentsEscrow` on Arbitrum One. Once a real consumer funds the escrow, `collect()` will pull GRT to the provider automatically.
-
-To complete the loop as a self-funded test:
-1. Send some GRT to the gateway signer (`0x7dfb2175a77e922f060bc0a59f83be6d2f4b85d4`) on Arbitrum One
-2. From that address: `GRT.approve(PaymentsEscrow, amount)` then `PaymentsEscrow.deposit(provider, amount)`
-3. Run `dispatch-smoke` to generate receipts — `collect()` will then settle GRT on the next hourly cycle
+The full payment loop is working end-to-end on the live provider. Requests generate TAP receipts, the gateway aggregates them into RAVs every 60s, and the service calls `RPCDataService.collect()` every hour — pulling GRT from the consumer's escrow to the provider automatically.
 
 ```
 dispatch-smoke
@@ -242,7 +237,7 @@ All Horizon contracts live on **Arbitrum One** (chain ID 42161).
 |---|---|
 | HorizonStaking | `0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03` |
 | GraphPayments | `0xb98a3D452E43e40C70F3c0B03C5c7B56A8B3b8CA` |
-| PaymentsEscrow | `0x8f477709eF277d4A880801D01A140a9CF88bA0d3` |
+| PaymentsEscrow | `0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E` |
 | GraphTallyCollector | `0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e` |
 | RPCDataService | `0x73846272813065c3e4efdb3fb82e0d128c8c2364` |
 
@@ -400,7 +395,7 @@ operator_private_key      = "0x..."   # signs response attestations only
 [tap]
 data_service_address      = "0x73846272813065c3e4efdb3fb82e0d128c8c2364"
 authorized_senders        = ["0x..."]  # gateway signer address(es)
-eip712_domain_name        = "TAP"
+eip712_domain_name        = "GraphTallyCollector"
 eip712_chain_id           = 42161
 eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
 
@@ -429,7 +424,7 @@ region = "eu-west"   # optional — used for geographic routing
 signer_private_key    = "0x..."
 data_service_address  = "0x73846272813065c3e4efdb3fb82e0d128c8c2364"
 base_price_per_cu     = 4000000000000   # ≈ $40/M requests at $0.09 GRT
-eip712_domain_name    = "TAP"
+eip712_domain_name    = "GraphTallyCollector"
 eip712_chain_id       = 42161
 eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
 

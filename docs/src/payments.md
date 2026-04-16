@@ -11,9 +11,9 @@ Dispatch uses [GraphTally (TAP v2)](https://github.com/graphprotocol/graph-impro
 2. Per request: gateway signs a TAP receipt (EIP-712 ECDSA, random nonce, value in GRT wei)
 3. Receipt sent in TAP-Receipt header alongside JSON-RPC request
 4. dispatch-service validates signature, persists receipt to PostgreSQL
-5. indexer-tap-agent batches receipts → sends to gateway's /rav/aggregate endpoint
-6. Gateway returns a signed RAV (Receipt Aggregate Voucher)
-7. Agent submits RAV on-chain: RPCDataService.collect()
+5. dispatch-service TAP aggregator batches receipts → sends to gateway's /rav/aggregate endpoint
+6. Gateway returns a signed RAV (Receipt Aggregate Voucher); service upserts it to tap_ravs
+7. dispatch-service collector submits RAV on-chain every hour: RPCDataService.collect()
                                → GraphTallyCollector (verifies EIP-712, tracks cumulative value)
                                → PaymentsEscrow (draws GRT from escrow)
                                → GraphPayments (distributes: protocol tax → delegators → provider)
