@@ -484,7 +484,7 @@ See [`ROADMAP.md`](ROADMAP.md) for full detail.
 |---|---|
 | HorizonStaking / GraphPayments / PaymentsEscrow | ✅ Reused as-is |
 | GraphTallyCollector (TAP v2) | ✅ Reused as-is |
-| `indexer-tap-agent` | ✅ Reused as-is (reads from `tap_receipts` table) |
+| `indexer-tap-agent` | ❌ Not used — TAP aggregation and on-chain collection are built into `dispatch-service` |
 | `indexer-service-rs` TAP middleware | ✅ Logic ported to `dispatch-service` |
 | `indexer-agent` | ✅ `/indexer-agent` npm package handles register/startService/stopService lifecycle |
 | `edgeandnode/gateway` | ✅ `dispatch-gateway` implements equivalent logic for RPC; `/consumer-sdk` provides trustless alternative |

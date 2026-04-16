@@ -46,7 +46,7 @@ Dispatch reuses most of the Horizon stack rather than reinventing it:
 |---|---|
 | HorizonStaking / GraphPayments / PaymentsEscrow | ✅ Reused as-is |
 | GraphTallyCollector (TAP v2) | ✅ Reused as-is |
-| `indexer-tap-agent` | ✅ Reused as-is |
+| `indexer-tap-agent` | ❌ Not used — TAP aggregation and on-chain collection are built into `dispatch-service` |
 | `indexer-service-rs` TAP middleware | ✅ Logic ported to `dispatch-service` |
 | Graph Node | ❌ Not needed — standard Ethereum clients only |
 | POI / SubgraphService dispute system | ❌ Replaced by tiered verification framework |
