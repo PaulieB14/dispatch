@@ -11,37 +11,6 @@ import {IHorizonStakingMain} from "@graphprotocol/interfaces/contracts/horizon/i
 import {IHorizonStakingBase} from "@graphprotocol/interfaces/contracts/horizon/internal/IHorizonStakingBase.sol";
 import {IGraphPayments} from "@graphprotocol/horizon/interfaces/IGraphPayments.sol";
 
-/// @dev Minimal ERC-20 mock for GRT bond tests.
-contract MockERC20 {
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-
-    function mint(address to, uint256 amount) external {
-        balanceOf[to] += amount;
-    }
-
-    function approve(address spender, uint256 amount) external returns (bool) {
-        allowance[msg.sender][spender] = amount;
-        return true;
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        require(balanceOf[msg.sender] >= amount, "insufficient");
-        balanceOf[msg.sender] -= amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        require(balanceOf[from] >= amount, "insufficient");
-        require(allowance[from][msg.sender] >= amount, "insufficient allowance");
-        balanceOf[from] -= amount;
-        allowance[from][msg.sender] -= amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-}
-
 /// @dev Minimal mock of IHorizonStaking — only the provision-related methods used by RPCDataService.
 contract MockHorizonStaking {
     mapping(address => mapping(address => IHorizonStakingTypes.Provision)) public provisions;
@@ -106,13 +75,11 @@ contract RPCDataServiceTest is Test {
     RPCDataService public service;
     MockHorizonStaking public staking;
     MockController public controller;
-    MockERC20 public grt;
 
     address public owner = makeAddr("owner");
     address public pauseGuardian = makeAddr("pauseGuardian");
     address public provider = makeAddr("provider");
     address public gateway = makeAddr("gateway");
-    address public proposer = makeAddr("proposer");
 
     uint256 constant SUFFICIENT_PROVISION = 25_000e18;
     uint64 constant SUFFICIENT_THAWING = 14 days;
@@ -122,10 +89,8 @@ contract RPCDataServiceTest is Test {
     function setUp() public {
         staking = new MockHorizonStaking();
         controller = new MockController(address(staking));
-        grt = new MockERC20();
 
-        // Deploy RPCDataService. address(0) for graphTallyCollector — collect() not tested here.
-        service = new RPCDataService(owner, address(controller), address(0), pauseGuardian, address(grt));
+        service = new RPCDataService(owner, address(controller), address(0), pauseGuardian);
 
         // Pre-populate staking mock with valid provision for `provider`.
         staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
@@ -332,134 +297,6 @@ contract RPCDataServiceTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // Pause guardian
-    // -------------------------------------------------------------------------
-
-    function test_pause_blocksRegister() public {
-        vm.prank(pauseGuardian);
-        service.pause();
-
-        vm.prank(provider);
-        vm.expectRevert(); // Pausable: paused
-        service.register(provider, abi.encode("https://rpc.example.com", "u1hx", address(0)));
-    }
-
-    function test_unpause_allowsRegister() public {
-        vm.prank(pauseGuardian);
-        service.pause();
-        vm.prank(pauseGuardian);
-        service.unpause();
-
-        _register(provider, "https://rpc.example.com", "u1hx", address(0));
-        assertTrue(service.isRegistered(provider));
-    }
-
-    // -------------------------------------------------------------------------
-    // Permissionless chain proposals
-    // -------------------------------------------------------------------------
-
-    function test_proposeChain_locksGrtBond() public {
-        uint256 bond = RPCDataService(address(service)).CHAIN_BOND_AMOUNT();
-        grt.mint(proposer, bond);
-        vm.prank(proposer);
-        grt.approve(address(service), bond);
-        vm.prank(proposer);
-        service.proposeChain(999);
-
-        (address storedProposer, uint256 storedAmount,) = RPCDataService(address(service)).pendingChainBonds(999);
-        assertEq(storedProposer, proposer);
-        assertEq(storedAmount, bond);
-        assertEq(grt.balanceOf(address(service)), bond);
-    }
-
-    function test_proposeChain_emitsEvent() public {
-        uint256 bond = RPCDataService(address(service)).CHAIN_BOND_AMOUNT();
-        grt.mint(proposer, bond);
-        vm.prank(proposer);
-        grt.approve(address(service), bond);
-
-        vm.expectEmit(true, true, false, true);
-        emit IRPCDataService.ChainProposed(999, proposer, bond);
-        vm.prank(proposer);
-        service.proposeChain(999);
-    }
-
-    function test_proposeChain_revertIfAlreadySupported() public {
-        vm.expectRevert(abi.encodeWithSelector(IRPCDataService.ChainAlreadySupported.selector, CHAIN_ETH_MAINNET));
-        vm.prank(proposer);
-        service.proposeChain(CHAIN_ETH_MAINNET);
-    }
-
-    function test_proposeChain_revertIfAlreadyPending() public {
-        uint256 bond = RPCDataService(address(service)).CHAIN_BOND_AMOUNT();
-        grt.mint(proposer, bond * 2);
-        vm.startPrank(proposer);
-        grt.approve(address(service), bond * 2);
-        service.proposeChain(999);
-        vm.expectRevert(abi.encodeWithSelector(IRPCDataService.ChainAlreadyProposed.selector, uint256(999)));
-        service.proposeChain(999);
-        vm.stopPrank();
-    }
-
-    function test_approveProposedChain_enablesChainAndRefundsBond() public {
-        uint256 bond = RPCDataService(address(service)).CHAIN_BOND_AMOUNT();
-        grt.mint(proposer, bond);
-        vm.prank(proposer);
-        grt.approve(address(service), bond);
-        vm.prank(proposer);
-        service.proposeChain(999);
-
-        vm.prank(owner);
-        service.approveProposedChain(999, 0);
-
-        (bool enabled,) = _getChainConfig(999);
-        assertTrue(enabled);
-        assertEq(grt.balanceOf(proposer), bond); // bond refunded
-        assertEq(grt.balanceOf(address(service)), 0);
-    }
-
-    function test_rejectProposedChain_forfeitsToTreasury() public {
-        uint256 bond = RPCDataService(address(service)).CHAIN_BOND_AMOUNT();
-        grt.mint(proposer, bond);
-        vm.prank(proposer);
-        grt.approve(address(service), bond);
-        vm.prank(proposer);
-        service.proposeChain(999);
-
-        uint256 ownerBefore = grt.balanceOf(owner);
-        vm.prank(owner);
-        service.rejectProposedChain(999);
-
-        assertEq(grt.balanceOf(owner), ownerBefore + bond);
-        assertEq(grt.balanceOf(proposer), 0);
-
-        (address storedProposer,,) = RPCDataService(address(service)).pendingChainBonds(999);
-        assertEq(storedProposer, address(0)); // cleared
-    }
-
-    function test_approveProposedChain_revertIfNotPending() public {
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IRPCDataService.ChainNotProposed.selector, uint256(999)));
-        service.approveProposedChain(999, 0);
-    }
-
-    // -------------------------------------------------------------------------
-    // GRT issuance rate
-    // -------------------------------------------------------------------------
-
-    function test_setIssuancePerCU_storesRate() public {
-        vm.prank(owner);
-        service.setIssuancePerCU(1e12);
-        assertEq(RPCDataService(address(service)).issuancePerCU(), 1e12);
-    }
-
-    function test_setIssuancePerCU_revertIfNotOwner() public {
-        vm.prank(makeAddr("attacker"));
-        vm.expectRevert();
-        service.setIssuancePerCU(1e12);
-    }
-
-    // -------------------------------------------------------------------------
     // Dynamic thawing period
     // -------------------------------------------------------------------------
 
@@ -498,86 +335,26 @@ contract RPCDataServiceTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // Rewards pool — deposit / withdraw
+    // Pause guardian
     // -------------------------------------------------------------------------
 
-    function test_depositRewardsPool_transfersGrtAndUpdatesPool() public {
-        uint256 amount = 500_000e18;
-        grt.mint(owner, amount);
-        vm.startPrank(owner);
-        grt.approve(address(service), amount);
-        service.depositRewardsPool(amount);
-        vm.stopPrank();
+    function test_pause_blocksRegister() public {
+        vm.prank(pauseGuardian);
+        service.pause();
 
-        assertEq(RPCDataService(address(service)).rewardsPool(), amount);
-        assertEq(grt.balanceOf(address(service)), amount);
-    }
-
-    function test_depositRewardsPool_emitsEvent() public {
-        uint256 amount = 100_000e18;
-        grt.mint(owner, amount);
-        vm.startPrank(owner);
-        grt.approve(address(service), amount);
-        vm.expectEmit(false, false, false, true);
-        emit IRPCDataService.RewardsDeposited(amount);
-        service.depositRewardsPool(amount);
-        vm.stopPrank();
-    }
-
-    function test_depositRewardsPool_revertIfNotOwner() public {
-        vm.prank(makeAddr("attacker"));
-        vm.expectRevert();
-        service.depositRewardsPool(1e18);
-    }
-
-    function test_withdrawRewardsPool_transfersGrtAndReducesPool() public {
-        uint256 deposit = 500_000e18;
-        uint256 withdraw = 200_000e18;
-        grt.mint(owner, deposit);
-        vm.startPrank(owner);
-        grt.approve(address(service), deposit);
-        service.depositRewardsPool(deposit);
-        service.withdrawRewardsPool(withdraw);
-        vm.stopPrank();
-
-        assertEq(RPCDataService(address(service)).rewardsPool(), deposit - withdraw);
-        assertEq(grt.balanceOf(owner), withdraw);
-    }
-
-    function test_withdrawRewardsPool_emitsEvent() public {
-        uint256 amount = 100_000e18;
-        grt.mint(owner, amount);
-        vm.startPrank(owner);
-        grt.approve(address(service), amount);
-        service.depositRewardsPool(amount);
-        vm.expectEmit(false, false, false, true);
-        emit IRPCDataService.RewardsWithdrawn(amount);
-        service.withdrawRewardsPool(amount);
-        vm.stopPrank();
-    }
-
-    function test_withdrawRewardsPool_revertIfInsufficient() public {
-        vm.prank(owner);
-        vm.expectRevert(
-            abi.encodeWithSelector(IRPCDataService.InsufficientRewardsPool.selector, uint256(0), uint256(1e18))
-        );
-        service.withdrawRewardsPool(1e18);
-    }
-
-    function test_withdrawRewardsPool_revertIfNotOwner() public {
-        vm.prank(makeAddr("attacker"));
-        vm.expectRevert();
-        service.withdrawRewardsPool(1e18);
-    }
-
-    // -------------------------------------------------------------------------
-    // Rewards pool — claimRewards
-    // -------------------------------------------------------------------------
-
-    function test_claimRewards_revertIfNoPendingRewards() public {
         vm.prank(provider);
-        vm.expectRevert(abi.encodeWithSelector(IRPCDataService.NoPendingRewards.selector, provider));
-        service.claimRewards();
+        vm.expectRevert(); // Pausable: paused
+        service.register(provider, abi.encode("https://rpc.example.com", "u1hx", address(0)));
+    }
+
+    function test_unpause_allowsRegister() public {
+        vm.prank(pauseGuardian);
+        service.pause();
+        vm.prank(pauseGuardian);
+        service.unpause();
+
+        _register(provider, "https://rpc.example.com", "u1hx", address(0));
+        assertTrue(service.isRegistered(provider));
     }
 
     // -------------------------------------------------------------------------
@@ -597,10 +374,6 @@ contract RPCDataServiceTest is Test {
     ) internal {
         vm.prank(_provider);
         service.startService(_provider, abi.encode(chainId, uint8(tier), endpoint));
-    }
-
-    function _setProvision(address _provider, uint256 tokens, uint64 thawingPeriod) internal {
-        staking.setProvision(_provider, address(service), tokens, thawingPeriod);
     }
 
     function _getChainConfig(uint256 chainId) internal view returns (bool enabled, uint256 minTokens) {

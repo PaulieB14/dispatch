@@ -185,7 +185,7 @@ contract RPCDataServiceIntegrationTest is Test {
         tallyCollector = new GraphTallyCollector("GraphTallyCollector", "1", address(controller), 0);
 
         // 7. Our contract under test.
-        service = new RPCDataService(owner, address(controller), address(tallyCollector), pauseGuardian, address(grt));
+        service = new RPCDataService(owner, address(controller), address(tallyCollector), pauseGuardian);
 
         // 8. Governance: enable chain 1 (Ethereum mainnet).
         vm.prank(owner);

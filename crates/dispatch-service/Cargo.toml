@@ -24,7 +24,6 @@ serde_json.workspace = true
 toml.workspace = true
 alloy-primitives.workspace = true
 alloy-sol-types.workspace = true
-k256.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

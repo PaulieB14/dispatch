@@ -4,7 +4,6 @@ use anyhow::Result;
 use tower_http::trace::TraceLayer;
 
 use crate::{
-    attestation::Attester,
     collector,
     config::Config,
     db,
@@ -17,7 +16,6 @@ use crate::{
 pub struct AppState {
     pub config: Arc<Config>,
     pub http_client: reqwest::Client,
-    pub attester: Arc<Attester>,
     /// Pre-computed EIP-712 domain separator for GraphTallyCollector.
     pub tap_domain_separator: alloy_primitives::B256,
     /// PostgreSQL pool. None if no database URL was configured.
@@ -25,8 +23,6 @@ pub struct AppState {
 }
 
 pub async fn run(config: Config) -> Result<()> {
-    let attester = Attester::from_hex(&config.indexer.operator_private_key)?;
-
     let tap_domain_separator = dispatch_tap::domain_separator(
         &config.tap.eip712_domain_name,
         config.tap.eip712_chain_id,
@@ -53,7 +49,6 @@ pub async fn run(config: Config) -> Result<()> {
         http_client: reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()?,
-        attester: Arc::new(attester),
         tap_domain_separator,
         db_pool,
     };

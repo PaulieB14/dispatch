@@ -25,20 +25,13 @@ interface IRPCDataService {
 
     struct ChainConfig {
         bool enabled;
-        uint256 minProvisionTokens; // Minimum GRT provision required to serve this chain
-    }
-
-    /// @notice A pending permissionless chain proposal with its GRT bond.
-    struct ChainBond {
-        address proposer;
-        uint256 amount;
-        uint256 proposedAt;
+        uint256 minProvisionTokens;
     }
 
     struct ChainRegistration {
         uint64 chainId;
         CapabilityTier tier;
-        string endpoint; // HTTPS or WSS URL of the provider's RPC node
+        string endpoint;
         bool active;
     }
 
@@ -48,28 +41,19 @@ interface IRPCDataService {
 
     event ChainAdded(uint256 indexed chainId, uint256 minProvisionTokens);
     event ChainRemoved(uint256 indexed chainId);
-    event ChainProposed(uint256 indexed chainId, address indexed proposer, uint256 bondAmount);
-    event ChainBondReleased(uint256 indexed chainId, address indexed proposer, uint256 bondAmount);
-    event ChainBondForfeited(uint256 indexed chainId, uint256 bondAmount);
-    event IssuanceRateSet(uint256 issuancePerCU);
     event MinThawingPeriodSet(uint64 period);
-    event RewardsAccrued(address indexed recipient, uint256 amount);
-    event RewardsClaimed(address indexed recipient, uint256 amount);
-    event RewardsDeposited(uint256 amount);
-    event RewardsWithdrawn(uint256 amount);
     event ProviderRegistered(address indexed provider, string endpoint, string geoHash);
     event ProviderDeregistered(address indexed provider);
     event PaymentsDestinationSet(address indexed provider, address indexed destination);
     event ServiceStarted(address indexed provider, uint64 indexed chainId, CapabilityTier tier, string endpoint);
     event ServiceStopped(address indexed provider, uint64 indexed chainId, CapabilityTier tier);
+
     // -------------------------------------------------------------------------
     // Errors
     // -------------------------------------------------------------------------
 
     error ChainNotSupported(uint256 chainId);
     error ChainAlreadySupported(uint256 chainId);
-    error ChainAlreadyProposed(uint256 chainId);
-    error ChainNotProposed(uint256 chainId);
     error ProviderAlreadyRegistered(address provider);
     error ProviderNotRegistered(address provider);
     error ActiveRegistrationsExist(address provider);
@@ -78,8 +62,6 @@ interface IRPCDataService {
     error RegistrationNotFound(address provider, uint64 chainId, CapabilityTier tier);
     error InvalidServiceProvider(address expected, address actual);
     error InvalidPaymentType();
-    error InsufficientRewardsPool(uint256 available, uint256 required);
-    error NoPendingRewards(address provider);
 
     // -------------------------------------------------------------------------
     // Governance (owner-only)
@@ -94,45 +76,18 @@ interface IRPCDataService {
     ///         until providers call stopService.
     function removeChain(uint256 chainId) external;
 
-    /// @notice Propose adding a new chain permissionlessly by posting a GRT bond.
-    /// @dev Caller must have approved CHAIN_BOND_AMOUNT GRT to this contract.
-    ///      Governance then approves or rejects the proposal.
-    function proposeChain(uint256 chainId) external;
-
-    /// @notice Approve a pending chain proposal, enabling the chain and refunding the bond.
-    function approveProposedChain(uint256 chainId, uint256 minProvisionTokens) external;
-
-    /// @notice Reject a pending chain proposal, forfeiting the bond to the treasury (owner).
-    function rejectProposedChain(uint256 chainId) external;
-
     /// @notice Update the default minimum provision tokens.
     function setDefaultMinProvision(uint256 tokens) external;
 
     /// @notice Update the minimum thawing period.
     function setMinThawingPeriod(uint64 period) external;
 
-    /// @notice Set the GRT issuance rate per compute unit.
-    /// @dev Rate of 0 disables issuance.
-    function setIssuancePerCU(uint256 rate) external;
-
-    /// @notice Deposit GRT into the rewards pool used for provider issuance payments.
-    /// @dev Caller must have approved `amount` GRT to this contract.
-    function depositRewardsPool(uint256 amount) external;
-
-    /// @notice Withdraw unused GRT from the rewards pool (owner only).
-    function withdrawRewardsPool(uint256 amount) external;
-
     // -------------------------------------------------------------------------
     // Provider operations
     // -------------------------------------------------------------------------
 
-    /// @notice Claim all accrued GRT rewards for the caller.
-    function claimRewards() external;
-
     /// @notice Update the address that receives collected GRT fees.
-    /// @dev Defaults to serviceProvider at registration. Allows separation of
-    ///      operator key (used for signing) from payment wallet (cold storage etc.).
-    ///      Takes effect on the next collect() call.
+    /// @dev Defaults to serviceProvider at registration.
     function setPaymentsDestination(address destination) external;
 
     // -------------------------------------------------------------------------
@@ -146,10 +101,6 @@ interface IRPCDataService {
     function activeRegistrationCount(address provider) external view returns (uint256);
 
     function paymentsDestination(address provider) external view returns (address);
-
-    function pendingRewards(address provider) external view returns (uint256);
-
-    function rewardsPool() external view returns (uint256);
 
     function minThawingPeriod() external view returns (uint64);
 

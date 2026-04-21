@@ -7,12 +7,11 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use serde_json::Value;
 
 use crate::{
     db,
     error::ServiceError,
-    rpc::{proxy, types::JsonRpcRequest, verify::extract_block_context},
+    rpc::{proxy, types::JsonRpcRequest},
     server::AppState,
     tap,
 };
@@ -76,29 +75,5 @@ async fn rpc_handler(
         }
     }
 
-    // --- Attest the response ---
-    let params_bytes = serde_json::to_vec(&request.params.as_ref().unwrap_or(&Value::Null))
-        .unwrap_or_default();
-    let response_bytes = serde_json::to_vec(&response).unwrap_or_default();
-
-    let (block_number, block_hash) = response
-        .result
-        .as_ref()
-        .map(|r| extract_block_context(&request.method, r))
-        .unwrap_or((0, alloy_primitives::B256::ZERO));
-
-    let attestation = state.attester.attest(
-        chain_id,
-        &request.method,
-        &params_bytes,
-        &response_bytes,
-        block_number,
-        block_hash,
-    )?;
-
-    let mut http_resp = Json(response).into_response();
-    if let Ok(val) = attestation.parse() {
-        http_resp.headers_mut().insert("X-Dispatch-Attestation", val);
-    }
-    Ok(http_resp)
+    Ok(Json(response).into_response())
 }
