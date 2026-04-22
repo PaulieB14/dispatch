@@ -374,16 +374,44 @@ GRT lands in your `paymentsDestination` wallet.
 
 ## Capability tiers
 
-Register for each tier your node supports. Per-chain.
+Not all Ethereum nodes can answer all requests. A standard full node only keeps recent state (~128 blocks) — ask it for a balance at block 1,000,000 and it fails. A node without debug APIs enabled can't serve `debug_traceTransaction`. If a gateway routed those requests blindly it would just get errors.
+
+Capability tiers are how the network avoids that. Each tier describes a distinct infrastructure capability. You declare which tiers your node supports at registration time, and the gateway only routes requests to providers that can actually answer them.
 
 | Tier | Value | What it serves | Node requirement |
 |---|---|---|---|
-| Standard | `0` | All standard methods, recent ~128 blocks | Full node |
-| Archive | `1` | Full historical state queries | Archive node |
-| Debug/Trace | `2` | `debug_*`, `trace_*` APIs | Full/archive + debug APIs enabled |
-| WebSocket | `3` | `eth_subscribe`, real-time streams | Full node + WS endpoint |
+| Standard | `0` | All standard JSON-RPC methods, recent ~128 blocks | Any full node |
+| Archive | `1` | Historical state at any block number | Archive node (~10–20× more disk) |
+| Debug/Trace | `2` | `debug_*` and `trace_*` methods | Full/archive node with debug APIs enabled (`--http.api=debug,trace`) |
+| WebSocket | `3` | `eth_subscribe`, real-time event streams | Full node with a WebSocket endpoint |
 
-Your staked GRT covers all tiers and chains — there is no per-tier stake splitting.
+### One registration per (chain, tier) pair
+
+Registration is granular. You call `startService(chainId, tier, endpoint)` once for each capability you want to advertise — each call is a separate on-chain record. This means you can mix and match freely:
+
+- Archive on Ethereum mainnet, Standard only on Arbitrum
+- Debug on one chain, nothing on another
+- WebSocket on all chains, Archive on none
+
+The `services` array in your indexer agent config maps directly to these calls:
+
+```json
+"services": [
+  { "chainId": 1,     "tier": 0 },
+  { "chainId": 1,     "tier": 1 },
+  { "chainId": 42161, "tier": 0 }
+]
+```
+
+This registers Standard and Archive on Ethereum mainnet, and Standard only on Arbitrum One. Three `startService` calls, three on-chain records.
+
+### Stake is shared
+
+Your staked GRT covers all tiers and all chains — there is no per-tier or per-chain stake splitting. The full provision applies regardless of how many (chain, tier) pairs you register for.
+
+### Start with what your node supports
+
+If you're running a standard full node, register tier `0` only. If it's an archive node, add tier `1`. Only enable tier `2` if you've explicitly enabled debug/trace APIs on your node — requests routed to you will fail otherwise and hurt your QoS score.
 
 ---
 
