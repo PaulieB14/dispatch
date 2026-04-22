@@ -1,4 +1,8 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    sync::{Arc, RwLock},
+};
 
 use alloy_primitives::Address;
 use anyhow::Result;
@@ -26,6 +30,9 @@ pub struct AppState {
     pub signing_key: Arc<SigningKey>,
     /// Ethereum address derived from signing_key — embedded in attestations.
     pub signer_address: Address,
+    /// Per-consumer accumulated unconfirmed receipt value (GRT wei).
+    /// Reset for each consumer after a successful on-chain collect().
+    pub consumer_credit: Arc<RwLock<HashMap<Address, u128>>>,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -50,10 +57,13 @@ pub async fn run(config: Config) -> Result<()> {
         None
     };
 
+    let consumer_credit: Arc<RwLock<HashMap<Address, u128>>> =
+        Arc::new(RwLock::new(HashMap::new()));
+
     // Start background tasks if a database is configured.
     if let Some(ref pool) = db_pool {
         tap_aggregator::spawn(Arc::new(config.clone()), pool.clone());
-        collector::spawn(Arc::new(config.clone()), pool.clone());
+        collector::spawn(Arc::new(config.clone()), pool.clone(), Arc::clone(&consumer_credit));
     }
 
     let state = AppState {
@@ -65,6 +75,7 @@ pub async fn run(config: Config) -> Result<()> {
         db_pool,
         signing_key: Arc::new(signing_key),
         signer_address,
+        consumer_credit,
     };
 
     let app = routes::router(state).layer(TraceLayer::new_for_http());

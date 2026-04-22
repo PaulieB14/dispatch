@@ -29,6 +29,9 @@ pub enum ServiceError {
     #[error("invalid JSON-RPC request: {0}")]
     InvalidRequest(String),
 
+    #[error("credit limit exceeded — fund escrow at https://lodestar-dashboard.com/dispatch")]
+    CreditLimitExceeded,
+
     #[error("internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -44,6 +47,9 @@ impl IntoResponse for ServiceError {
             }
             ServiceError::UnsupportedChain(_) => {
                 (StatusCode::NOT_FOUND, -32002, self.to_string())
+            }
+            ServiceError::CreditLimitExceeded => {
+                (StatusCode::PAYMENT_REQUIRED, -32005, self.to_string())
             }
             ServiceError::BackendError(_) | ServiceError::InvalidRequest(_) => {
                 (StatusCode::BAD_GATEWAY, -32603, self.to_string())

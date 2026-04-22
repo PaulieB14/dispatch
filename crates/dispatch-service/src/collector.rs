@@ -7,7 +7,11 @@
 //!
 //! Enable by adding a [collector] section to config.toml.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use alloy::{
     network::EthereumWallet,
@@ -60,7 +64,7 @@ sol! {
 }
 
 /// Spawn the collector loop. Returns immediately; runs until the process exits.
-pub fn spawn(config: Arc<Config>, pool: Pool) {
+pub fn spawn(config: Arc<Config>, pool: Pool, consumer_credit: Arc<RwLock<HashMap<Address, u128>>>) {
     let Some(collector_cfg) = config.collector.clone() else {
         tracing::info!("no [collector] config — on-chain RAV collection disabled");
         return;
@@ -165,6 +169,10 @@ pub fn spawn(config: Arc<Config>, pool: Pool) {
                                 value,
                                 "RAV redeemed on-chain ✓"
                             );
+                            // Reset this consumer's credit — they've paid.
+                            if let Ok(payer) = rav.payer_address.parse::<Address>() {
+                                consumer_credit.write().unwrap().remove(&payer);
+                            }
                         }
                         Ok(Err(e)) => tracing::error!(collection_id = %rav.collection_id, "collect() failed: {e:#}"),
                         Err(_) => tracing::error!(collection_id = %rav.collection_id, "collect() timed out"),

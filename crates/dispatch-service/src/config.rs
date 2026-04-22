@@ -73,6 +73,10 @@ pub struct TapConfig {
     /// How often to run RAV aggregation (seconds). Default: 60.
     #[serde(default = "default_aggregation_interval_secs")]
     pub aggregation_interval_secs: u64,
+    /// Maximum unconfirmed GRT wei a consumer may accumulate before being blocked.
+    /// Resets after a successful on-chain collect(). Default: 0.1 GRT.
+    #[serde(default = "default_credit_threshold")]
+    pub credit_threshold: u128,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -115,4 +119,7 @@ fn default_aggregation_interval_secs() -> u64 {
 }
 fn default_collect_interval_secs() -> u64 {
     3600 // 1 hour
+}
+fn default_credit_threshold() -> u128 {
+    100_000_000_000_000_000 // 0.1 GRT
 }

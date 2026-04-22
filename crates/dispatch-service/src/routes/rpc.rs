@@ -59,10 +59,31 @@ async fn rpc_handler(
         now_ns,
     )?;
 
+    // --- Credit limit check ---
+    {
+        let credit = state.consumer_credit.read().unwrap();
+        let served = credit.get(&validated.signer).copied().unwrap_or(0);
+        if served >= state.config.tap.credit_threshold {
+            tracing::warn!(
+                signer = %validated.signer,
+                served,
+                threshold = state.config.tap.credit_threshold,
+                "consumer credit limit reached"
+            );
+            return Err(ServiceError::CreditLimitExceeded);
+        }
+    }
+
     tracing::debug!(method = %request.method, chain_id, "dispatching");
 
     // --- Forward to backend Ethereum client ---
     let response = proxy::forward(&state.http_client, &backend_url, &request).await?;
+
+    // --- Increment consumer credit ---
+    {
+        let mut credit = state.consumer_credit.write().unwrap();
+        *credit.entry(validated.signer).or_insert(0) += validated.receipt.value;
+    }
 
     // --- Persist receipt (non-fatal if DB is unavailable) ---
     if let Some(pool) = &state.db_pool {
