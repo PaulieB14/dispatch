@@ -68,10 +68,11 @@ Listening: http://localhost:8545
 Consumer:  0xABCD...1234
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠  New consumer key generated → ./consumer.key
-   Fund the escrow before making requests:
-   https://lodestar-dashboard.com/dispatch
+Fund escrow at:  https://lodestar-dashboard.com/dispatch
+Consumer address: 0xABCD...1234
+Or use an existing funded key: DISPATCH_SIGNER_KEY=0x...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Add to MetaMask → Settings → Networks → Add a network
+Add to MetaMask  →  Settings → Networks → Add a network
   RPC URL:  http://localhost:8545
   Chain ID: 1
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -132,21 +133,25 @@ import {
 } from "@lodestar-dispatch/consumer-sdk";
 
 // Discover active providers for a chain + tier
-const providers = await discoverProviders({
-  subgraphUrl: "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0",
-  chainId: 42161,
-  tier: 0,  // 0 = Standard, 1 = Archive
-});
+const providers = await discoverProviders(
+  "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0",
+  42161,  // chainId
+  0,      // tier: 0 = Standard, 1 = Archive
+);
 
 const provider = selectProvider(providers);
 
 // Build and sign a receipt
-const receipt = buildReceipt({
-  dataService: "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
-  serviceProvider: provider.address,
-  value: 4_000_000_000_000n,
-});
-const signed = await signReceipt(receipt, privateKey);
+const receipt = buildReceipt(
+  "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",  // dataService
+  provider.address,                                // serviceProvider
+  4_000_000_000_000n,                             // value (GRT wei)
+);
+const signed = await signReceipt(
+  receipt,
+  { verifyingContract: "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e" },
+  privateKey,
+);
 ```
 
 ---

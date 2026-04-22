@@ -251,10 +251,10 @@ npm start
 ### Docker Compose
 
 ```bash
-cp docker/gateway.example.toml docker/gateway.toml
 cp docker/config.example.toml  docker/config.toml
+cp docker/gateway.example.toml docker/gateway.toml
 # Fill in private keys, provider addresses, and backend URLs.
-docker compose -f docker/docker-compose.yml up
+docker compose up
 ```
 
 ### Build from source
@@ -313,10 +313,11 @@ Listening: http://localhost:8545
 Consumer:  0xABCD...1234
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠  New consumer key generated → ./consumer.key
-   Fund the escrow before making requests:
-   https://lodestar-dashboard.com/dispatch
+Fund escrow at:  https://lodestar-dashboard.com/dispatch
+Consumer address: 0xABCD...1234
+Or use an existing funded key: DISPATCH_SIGNER_KEY=0x...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Add to MetaMask → Settings → Networks → Add a network
+Add to MetaMask  →  Settings → Networks → Add a network
   RPC URL:  http://localhost:8545
   Chain ID: 1
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

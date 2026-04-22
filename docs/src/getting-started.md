@@ -93,11 +93,11 @@ cargo test
 The quickest path to a full running stack:
 
 ```bash
-cp docker/gateway.example.toml docker/gateway.toml
 cp docker/config.example.toml  docker/config.toml
+cp docker/gateway.example.toml docker/gateway.toml
 
 # Fill in private keys, provider addresses, and backend RPC URLs
-docker compose -f docker/docker-compose.yml up
+docker compose up
 ```
 
-The default stack starts `dispatch-service`, `dispatch-gateway`, and PostgreSQL. The oracle (`dispatch-oracle`) is optional — it is only needed for Tier 1 Merkle proof slashing.
+The default stack starts `dispatch-service`, `dispatch-gateway`, and PostgreSQL.
