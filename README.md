@@ -103,6 +103,8 @@ contracts/
 
 consumer-sdk/         TypeScript SDK — dApp developers use this to talk to
                       providers directly without the gateway
+proxy/                Drop-in local JSON-RPC proxy — point any app (MetaMask, Viem,
+                      Ethers.js) at localhost and it routes through the network
 indexer-agent/        TypeScript agent — automates provider register/startService/
                       stopService lifecycle with graceful shutdown
 subgraph/             The Graph subgraph — indexes RPCDataService events
@@ -289,6 +291,42 @@ cp .env.example .env
 # fill in PRIVATE_KEY, OWNER, PAUSE_GUARDIAN, GRAPH_CONTROLLER, GRAPH_TALLY_COLLECTOR
 forge script script/Deploy.s.sol --rpc-url arbitrum_one --broadcast --verify -vvvv
 ```
+
+### Use the drop-in proxy
+
+The quickest way to point any existing app — MetaMask, Viem, Ethers.js, curl — at the Dispatch network without changing a line of application code.
+
+```bash
+cd proxy
+npm install
+export DISPATCH_SIGNER_KEY=0x<your-private-key>
+npm start
+```
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+dispatch-proxy v0.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Chain:     Ethereum Mainnet (1)
+Listening: http://localhost:8545
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Add to MetaMask → Settings → Networks → Add a network
+  RPC URL:  http://localhost:8545
+  Chain ID: 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[12:34:56] ✓ eth_blockNumber      42ms  0.000004 GRT   total: 0.000004 GRT
+[12:34:57] ✓ eth_getBalance       38ms  0.000008 GRT   total: 0.000012 GRT
+```
+
+Configuration via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DISPATCH_SIGNER_KEY` | *required* | Consumer private key for signing TAP receipts |
+| `DISPATCH_CHAIN_ID` | `1` | Chain to proxy (1 = Ethereum, 42161 = Arbitrum One, etc.) |
+| `DISPATCH_PORT` | `8545` | Local port to listen on |
+| `DISPATCH_BASE_PRICE_PER_CU` | `4000000000000` | GRT wei per compute unit |
 
 ### Use the Consumer SDK
 

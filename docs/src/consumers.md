@@ -47,6 +47,50 @@ Currently live: **Arbitrum One (42161)** — Standard and Archive tiers.
 
 ---
 
+## dispatch-proxy (drop-in local server)
+
+The easiest way to point any existing app at the Dispatch network without changing application code. Starts a standard JSON-RPC HTTP server on localhost; MetaMask, Viem, Ethers.js, and curl all work against it without modification.
+
+```bash
+cd proxy
+npm install
+export DISPATCH_SIGNER_KEY=0x<your-private-key>
+npm start
+```
+
+On startup it prints the MetaMask instructions and begins logging every request:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+dispatch-proxy v0.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Chain:     Ethereum Mainnet (1)
+Listening: http://localhost:8545
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Add to MetaMask → Settings → Networks → Add a network
+  RPC URL:  http://localhost:8545
+  Chain ID: 1
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[12:34:56] ✓ eth_blockNumber      42ms  0.000004 GRT   total: 0.000004 GRT
+[12:34:57] ✓ eth_getBalance       38ms  0.000008 GRT   total: 0.000012 GRT
+```
+
+**Configuration:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `DISPATCH_SIGNER_KEY` | *required* | Consumer private key for signing TAP receipts |
+| `DISPATCH_CHAIN_ID` | `1` | Chain to proxy (1 = Ethereum, 42161 = Arbitrum One, etc.) |
+| `DISPATCH_PORT` | `8545` | Local port to listen on |
+| `DISPATCH_BASE_PRICE_PER_CU` | `4000000000000` | GRT wei per compute unit |
+
+The proxy handles provider discovery, TAP receipt signing, QoS-scored provider selection, CORS, and JSON-RPC batch requests. On exit (Ctrl+C) it prints a session summary of total requests and GRT spent.
+
+Unlike the gateway, the proxy runs locally and signs receipts with your own key — you pay providers directly from your own escrow. See [Funding the escrow](#funding-the-escrow) below.
+
+---
+
 ## Consumer SDK
 
 For trustless access — signs receipts locally and talks directly to providers, no gateway in the loop.
