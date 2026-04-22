@@ -1,10 +1,11 @@
 #!/usr/bin/env tsx
 import { createServer, type IncomingMessage } from "node:http";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { DISPATCHClient, methodCU } from "../../consumer-sdk/src/index.js";
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 
-const SIGNER_KEY = process.env.DISPATCH_SIGNER_KEY as `0x${string}` | undefined;
 const CHAIN_ID   = parseInt(process.env.DISPATCH_CHAIN_ID   ?? "1");
 const PORT       = parseInt(process.env.DISPATCH_PORT       ?? "8545");
 const SUBGRAPH   = process.env.DISPATCH_SUBGRAPH_URL
@@ -14,12 +15,28 @@ const DATA_SERVICE    = (process.env.DISPATCH_DATA_SERVICE_ADDRESS
   ?? "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078") as `0x${string}`;
 const TALLY_COLLECTOR = (process.env.DISPATCH_TALLY_COLLECTOR
   ?? "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e") as `0x${string}`;
+const KEY_FILE = process.env.DISPATCH_KEY_FILE ?? "./consumer.key";
+const DASHBOARD_URL = "https://lodestar-dashboard.com/dispatch";
 
-if (!SIGNER_KEY) {
-  console.error("Error: DISPATCH_SIGNER_KEY environment variable is required.");
-  console.error("  export DISPATCH_SIGNER_KEY=0x<your-private-key>");
-  process.exit(1);
+// ─── Key management ────────────────────────────────────────────────────────────
+
+let freshKey = false;
+
+function loadOrCreateKey(): `0x${string}` {
+  if (process.env.DISPATCH_SIGNER_KEY) {
+    return process.env.DISPATCH_SIGNER_KEY as `0x${string}`;
+  }
+  if (existsSync(KEY_FILE)) {
+    return readFileSync(KEY_FILE, "utf8").trim() as `0x${string}`;
+  }
+  const key = generatePrivateKey();
+  writeFileSync(KEY_FILE, key, { mode: 0o600 });
+  freshKey = true;
+  return key;
 }
+
+const SIGNER_KEY = loadOrCreateKey();
+const CONSUMER_ADDRESS = privateKeyToAccount(SIGNER_KEY).address;
 
 // ─── Chain names ───────────────────────────────────────────────────────────────
 
@@ -176,6 +193,16 @@ server.listen(PORT, () => {
   console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
   console.log(`Chain:     ${chainName} (${CHAIN_ID})`);
   console.log(`Listening: \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
+  console.log(`Consumer:  \x1b[33m${CONSUMER_ADDRESS}\x1b[0m`);
+
+  if (freshKey) {
+    console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
+    console.log(`\x1b[33m⚠  New consumer key generated → ${KEY_FILE}\x1b[0m`);
+    console.log(`   Fund the escrow before making requests:`);
+    console.log(`   \x1b[36m${DASHBOARD_URL}\x1b[0m`);
+    console.log(`   Paste your consumer address and deposit GRT.`);
+  }
+
   console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
   console.log(`Add to MetaMask  →  Settings → Networks → Add a network`);
   console.log(`  RPC URL:  \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
