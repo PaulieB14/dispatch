@@ -142,7 +142,7 @@ describe("service: request validation", () => {
       headers: { "Content-Type": "application/json" },
       body: "this is not json",
     });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 
   it("rejects wrong JSON-RPC version with 502", async () => {
@@ -295,11 +295,17 @@ describe("gateway: info endpoints", () => {
   });
 
   it("GET /metrics returns Prometheus text with dispatch counters", async () => {
+    // Prime at least one request through the gateway so prometheus emits non-empty families.
+    await fetch(`${GATEWAY_URL}/rpc/31337`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 99 }),
+    });
     const res = await fetch(`${GATEWAY_URL}/metrics`);
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).toContain("dispatch_requests_total");
-    expect(text).toContain("dispatch_request_duration_seconds");
+    expect(text).toContain("dispatch_gateway_requests_total");
+    expect(text).toContain("dispatch_gateway_request_duration_seconds");
   });
 });
 
