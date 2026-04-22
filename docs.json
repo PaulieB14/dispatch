@@ -3,44 +3,49 @@
   "theme": "mint",
   "name": "Dispatch",
   "description": "Experimental decentralised JSON-RPC data service on The Graph Horizon",
-  "navigation": [
-    {
-      "group": "",
-      "pages": ["docs/src/introduction"]
-    },
-    {
-      "group": "Overview",
-      "pages": [
-        "docs/src/architecture",
-        "docs/src/getting-started"
-      ]
-    },
-    {
-      "group": "Guides",
-      "pages": [
-        "docs/src/providers",
-        "docs/src/consumers",
-        "docs/src/payments",
-        "docs/src/verification"
-      ]
-    },
-    {
-      "group": "Components",
-      "pages": [
-        "docs/src/components/README",
-        "docs/src/components/service",
-        "docs/src/components/gateway",
-        "docs/src/components/tap"
-      ]
-    },
-    {
-      "group": "Reference",
-      "pages": [
-        "docs/src/contracts",
-        "docs/src/configuration",
-        "docs/src/deployed-addresses",
-        "docs/src/roadmap"
-      ]
-    }
-  ]
+  "colors": {
+    "primary": "#0D9373"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Introduction",
+        "pages": ["docs/src/introduction"]
+      },
+      {
+        "group": "Overview",
+        "pages": [
+          "docs/src/architecture",
+          "docs/src/getting-started"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "docs/src/providers",
+          "docs/src/consumers",
+          "docs/src/payments",
+          "docs/src/verification"
+        ]
+      },
+      {
+        "group": "Components",
+        "pages": [
+          "docs/src/components/README",
+          "docs/src/components/service",
+          "docs/src/components/gateway",
+          "docs/src/components/tap"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "docs/src/contracts",
+          "docs/src/configuration",
+          "docs/src/deployed-addresses",
+          "docs/src/roadmap"
+        ]
+      }
+    ]
+  }
 }
