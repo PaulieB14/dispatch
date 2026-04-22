@@ -120,6 +120,13 @@ async function handleOne(req: JsonRpcRequest): Promise<unknown> {
     const ms  = Date.now() - start;
     const msg = err instanceof Error ? err.message : String(err);
     console.log(`[${ts()}] \x1b[31m✗\x1b[0m ${req.method.padEnd(38)} ${String(ms).padStart(4)}ms  ${msg}`);
+
+    if (msg.includes("402")) {
+      console.log(`\n\x1b[33m  Escrow not funded for consumer: \x1b[1m${CONSUMER_ADDRESS}\x1b[0m`);
+      console.log(`  Fund at:  \x1b[36m${DASHBOARD_URL}\x1b[0m`);
+      console.log(`  Or pass an existing funded key:  DISPATCH_SIGNER_KEY=0x...\n`);
+    }
+
     return rpcError(req.id, -32603, msg);
   }
 }
@@ -204,13 +211,13 @@ server.listen(PORT, () => {
   console.log(`Listening: \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
   console.log(`Consumer:  \x1b[33m${CONSUMER_ADDRESS}\x1b[0m`);
 
+  console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
   if (freshKey) {
-    console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
     console.log(`\x1b[33m⚠  New consumer key generated → ${KEY_FILE}\x1b[0m`);
-    console.log(`   Fund the escrow before making requests:`);
-    console.log(`   \x1b[36m${DASHBOARD_URL}\x1b[0m`);
-    console.log(`   Paste your consumer address and deposit GRT.`);
   }
+  console.log(`Fund escrow at:  \x1b[36m${DASHBOARD_URL}\x1b[0m`);
+  console.log(`Consumer address: \x1b[33m${CONSUMER_ADDRESS}\x1b[0m`);
+  console.log(`Or use an existing funded key: \x1b[90mDISPATCH_SIGNER_KEY=0x...\x1b[0m`);
 
   console.log(`\x1b[90m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\x1b[0m`);
   console.log(`Add to MetaMask  →  Settings → Networks → Add a network`);

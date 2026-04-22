@@ -23,6 +23,8 @@ export interface TapDomain {
   verifyingContract: `0x${string}`;
   /** Defaults to 42161 (Arbitrum One). */
   chainId?: number;
+  /** EIP-712 domain name. Defaults to "GraphTallyCollector". */
+  name?: string;
 }
 
 /**
@@ -46,7 +48,7 @@ export async function signReceipt(
 
   const signature = await client.signTypedData({
     domain: {
-      name: "TAP",
+      name: domain.name ?? "GraphTallyCollector",
       version: "1",
       chainId: domain.chainId ?? 42161,
       verifyingContract: domain.verifyingContract,
