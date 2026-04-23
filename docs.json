@@ -31,7 +31,7 @@
       {
         "group": "Components",
         "pages": [
-          "docs/src/components/README",
+          "docs/src/components/overview",
           "docs/src/components/service",
           "docs/src/components/gateway",
           "docs/src/components/tap"
