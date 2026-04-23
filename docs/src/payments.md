@@ -55,7 +55,7 @@ Request value is proportional to compute units (CUs) — a weight assigned per m
 | `eth_getLogs` (bounded) | 20 |
 | `debug_traceTransaction` | 500+ |
 
-Receipt value = `CU × base_price_per_cu`. Default `base_price_per_cu` is `4_000_000_000_000` GRT wei (~$40/million requests at $0.09 GRT).
+Receipt value = `CU × base_price_per_cu`. Default `base_price_per_cu` is `4_000_000_000_000` GRT wei (~\$40/million requests at \$0.09 GRT).
 
 ---
 
