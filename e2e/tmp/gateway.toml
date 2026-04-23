@@ -15,6 +15,9 @@ probe_interval_secs = 3600
 concurrent_k = 1
 quorum_k = 1
 
+[service]
+url = "http://127.0.0.1:7700"
+
 [[providers]]
 address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 endpoint = "http://127.0.0.1:7700"

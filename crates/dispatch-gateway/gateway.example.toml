@@ -39,6 +39,12 @@ concurrent_k        = 3     # Dispatch to top-3 providers; first response wins
 # 0.15 means a same-region provider gets +15pp weight before latency data exists.
 region_bonus        = 0.15
 
+# Receipt feed API — proxies GET /receipts/recent and GET /receipts to the
+# local dispatch-service so the dashboard can query receipt data through the
+# public gateway endpoint.
+# [service]
+# url = "http://localhost:7700"
+
 # Static provider list.
 # Dynamic discovery: configure [discovery] below to pull from the RPC subgraph.
 [[providers]]

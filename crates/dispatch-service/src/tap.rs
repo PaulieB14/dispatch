@@ -17,6 +17,9 @@ pub struct ValidatedReceipt {
     /// metadata (first 20 bytes). Falls back to `signer` for old receipts that
     /// pre-date the consumer-pays model.
     pub payer: Address,
+    /// JSON-RPC method name — extracted from receipt metadata bytes 20+.
+    /// None for receipts from older gateway versions that only encoded the payer.
+    pub method: Option<String>,
     pub signature: String,
 }
 
@@ -64,11 +67,14 @@ pub fn validate_receipt(
     // Consumer address is the first 20 bytes of metadata (encoded by the gateway).
     // Falls back to the signer for receipts from older gateway versions.
     let payer = dispatch_tap::payer_from_metadata(&r.metadata).unwrap_or(signer);
+    // Method name is encoded as UTF-8 at bytes 20+ (gateway versions >= this change).
+    let method = dispatch_tap::method_from_metadata(&r.metadata);
 
     Ok(ValidatedReceipt {
         receipt: signed.receipt,
         signer,
         payer,
+        method,
         signature: signed.signature,
     })
 }

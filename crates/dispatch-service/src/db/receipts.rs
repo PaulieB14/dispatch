@@ -9,8 +9,8 @@ pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) ->
     let row = sqlx::query(
         r#"
         INSERT INTO tap_receipts
-            (signer_address, payer_address, chain_id, timestamp_ns, nonce, value, signature, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (signer_address, payer_address, chain_id, timestamp_ns, nonce, value, signature, metadata, method)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
         "#,
     )
@@ -22,10 +22,81 @@ pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) ->
     .bind(validated.receipt.value.to_string()) // u128 → decimal string
     .bind(&validated.signature)
     .bind(validated.receipt.metadata.as_ref()) // &[u8]
+    .bind(&validated.method)
     .fetch_one(pool)
     .await?;
 
     Ok(row.get("id"))
+}
+
+// ---------------------------------------------------------------------------
+// Receipt feed API helpers
+// ---------------------------------------------------------------------------
+
+/// A lightweight receipt row for the dashboard feed and consumer history.
+pub struct ReceiptRow {
+    pub id: i64,
+    pub payer_address: String,
+    pub chain_id: i64,
+    pub timestamp_ns: i64,
+    pub value: String,
+    pub method: Option<String>,
+}
+
+/// Fetch the most recent receipts across all consumers, newest first.
+pub async fn recent(pool: &Pool, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, payer_address, chain_id, timestamp_ns, value, method
+        FROM   tap_receipts
+        ORDER  BY timestamp_ns DESC
+        LIMIT  $1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ReceiptRow {
+            id: r.get("id"),
+            payer_address: r.get("payer_address"),
+            chain_id: r.get("chain_id"),
+            timestamp_ns: r.get("timestamp_ns"),
+            value: r.get("value"),
+            method: r.get("method"),
+        })
+        .collect())
+}
+
+/// Fetch the most recent receipts for a specific consumer, newest first.
+pub async fn by_payer_recent(pool: &Pool, payer_hex: &str, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, payer_address, chain_id, timestamp_ns, value, method
+        FROM   tap_receipts
+        WHERE  payer_address = $1
+        ORDER  BY timestamp_ns DESC
+        LIMIT  $2
+        "#,
+    )
+    .bind(payer_hex)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| ReceiptRow {
+            id: r.get("id"),
+            payer_address: r.get("payer_address"),
+            chain_id: r.get("chain_id"),
+            timestamp_ns: r.get("timestamp_ns"),
+            value: r.get("value"),
+            method: r.get("method"),
+        })
+        .collect())
 }
 
 // ---------------------------------------------------------------------------

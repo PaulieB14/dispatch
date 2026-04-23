@@ -45,6 +45,17 @@ pub struct Config {
     pub discovery: Option<DiscoveryConfig>,
     /// Optional per-IP rate limiting.
     pub rate_limit: Option<RateLimitConfig>,
+    /// Optional dispatch-service URL for proxying receipt feed queries.
+    pub service: Option<ServiceConfig>,
+}
+
+/// Connection details for the local dispatch-service instance.
+/// When configured, the gateway proxies `/receipts/recent` and `/receipts`
+/// to this URL so the dashboard can query receipt data through the public gateway.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServiceConfig {
+    /// Base URL of the dispatch-service, e.g. "http://localhost:7700".
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

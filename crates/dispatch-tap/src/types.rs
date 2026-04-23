@@ -16,6 +16,19 @@ pub fn payer_from_metadata(metadata: &Bytes) -> Option<Address> {
     }
 }
 
+/// Extract the JSON-RPC method name from a TAP receipt's metadata field.
+///
+/// The gateway appends the method name as UTF-8 bytes starting at byte 20 of
+/// `metadata` (after the 20-byte consumer address). Returns `None` if the
+/// metadata is 20 bytes or fewer, or if the bytes are not valid UTF-8.
+pub fn method_from_metadata(metadata: &Bytes) -> Option<String> {
+    if metadata.len() > 20 {
+        std::str::from_utf8(&metadata[20..]).ok().map(|s| s.to_string())
+    } else {
+        None
+    }
+}
+
 /// EIP-712 type string for the TAP v2 Receipt struct.
 /// Must match exactly what the deployed GraphTallyCollector uses.
 pub const RECEIPT_TYPE_STRING: &str =

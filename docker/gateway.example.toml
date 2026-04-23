@@ -45,6 +45,14 @@ concurrent_k        = 3
 subgraph_url  = "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0"
 interval_secs = 60
 
+# ── Receipt feed API ──────────────────────────────────────────────────────
+# When configured, the gateway proxies GET /receipts/recent and GET /receipts
+# to the local dispatch-service so the dashboard can query receipt data through
+# the public gateway endpoint.
+#
+# [service]
+# url = "http://dispatch-service:7700"
+
 # ── Rate limiting ──────────────────────────────────────────────────────────
 # Per-IP token-bucket rate limiting on the /rpc/{chain_id} endpoint.
 #
