@@ -1,6 +1,21 @@
 use alloy_primitives::{Address, Bytes};
 use serde::{Deserialize, Serialize};
 
+/// Extract the consumer (payer) address from a TAP receipt's metadata field.
+///
+/// The gateway encodes the consumer's Ethereum address as the first 20 bytes of
+/// `metadata` before signing the receipt. Providers use this to determine whose
+/// escrow to charge and to group receipts into per-consumer RAVs.
+///
+/// Returns `None` if the metadata is too short (e.g. old receipts with no payer).
+pub fn payer_from_metadata(metadata: &Bytes) -> Option<Address> {
+    if metadata.len() >= 20 {
+        Some(Address::from_slice(&metadata[..20]))
+    } else {
+        None
+    }
+}
+
 /// EIP-712 type string for the TAP v2 Receipt struct.
 /// Must match exactly what the deployed GraphTallyCollector uses.
 pub const RECEIPT_TYPE_STRING: &str =

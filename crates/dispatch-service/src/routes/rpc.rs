@@ -60,30 +60,31 @@ async fn rpc_handler(
     )?;
 
     // --- Escrow balance pre-check (cached 30 s) ---
+    // Check the consumer's (payer's) escrow, not the gateway signer's.
     if let Some(checker) = &state.escrow_checker {
-        match checker.balance(validated.signer).await {
+        match checker.balance(validated.payer).await {
             Ok(0) => {
                 tracing::warn!(
-                    signer = %validated.signer,
-                    "escrow balance is zero — rejecting request"
+                    payer = %validated.payer,
+                    "consumer escrow balance is zero — rejecting request"
                 );
                 return Err(ServiceError::InsufficientEscrow);
             }
-            Ok(bal) => tracing::debug!(signer = %validated.signer, balance = bal, "escrow ok"),
+            Ok(bal) => tracing::debug!(payer = %validated.payer, balance = bal, "escrow ok"),
             Err(e) => {
                 // Don't block the request if the check itself fails — log and continue.
-                tracing::warn!(error = %e, signer = %validated.signer, "escrow check failed, proceeding anyway");
+                tracing::warn!(error = %e, payer = %validated.payer, "escrow check failed, proceeding anyway");
             }
         }
     }
 
-    // --- Credit limit check ---
+    // --- Credit limit check (per consumer, not per gateway signer) ---
     {
         let credit = state.consumer_credit.read().unwrap();
-        let served = credit.get(&validated.signer).copied().unwrap_or(0);
+        let served = credit.get(&validated.payer).copied().unwrap_or(0);
         if served >= state.config.tap.credit_threshold {
             tracing::warn!(
-                signer = %validated.signer,
+                payer = %validated.payer,
                 served,
                 threshold = state.config.tap.credit_threshold,
                 "consumer credit limit reached"
@@ -100,7 +101,7 @@ async fn rpc_handler(
     // --- Increment consumer credit ---
     {
         let mut credit = state.consumer_credit.write().unwrap();
-        *credit.entry(validated.signer).or_insert(0) += validated.receipt.value;
+        *credit.entry(validated.payer).or_insert(0) += validated.receipt.value;
     }
 
     // --- Persist receipt (non-fatal if DB is unavailable) ---

@@ -26,6 +26,11 @@ pub fn router() -> Router<AppState> {
 pub struct AggregateRequest {
     /// The indexer's on-chain service provider address.
     pub service_provider: Address,
+    /// The consumer (payer) address whose escrow will be debited on-chain.
+    /// When present, the RAV will have `payer = consumer_address` so the
+    /// correct escrow account is charged. Omit only for backwards compatibility
+    /// (falls back to the gateway's own signer address).
+    pub payer: Option<Address>,
     /// All receipts to include in this RAV (for full cumulative aggregation, include
     /// all historical receipts, not just new ones).
     pub receipts: Vec<SignedReceipt>,
@@ -45,7 +50,9 @@ async fn aggregate_handler(
     }
 
     let data_service = state.config.tap.data_service_address;
-    let payer = state.signer_address;
+    // Use the consumer-provided payer if present; fall back to gateway's own address
+    // for backwards-compatible callers that pre-date the consumer-pays model.
+    let payer = req.payer.unwrap_or(state.signer_address);
     let domain_sep = state.tap_domain_separator;
 
     let mut value_aggregate: u128 = 0;

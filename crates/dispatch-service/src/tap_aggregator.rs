@@ -89,8 +89,13 @@ async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &r
             })
             .collect();
 
+        let payer: alloy_primitives::Address = payer_hex
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid payer address in db: {payer_hex}"))?;
+
         let body = serde_json::json!({
             "service_provider": service_provider,
+            "payer": payer,
             "receipts": receipts,
         });
 

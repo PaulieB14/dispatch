@@ -9,12 +9,13 @@ pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) ->
     let row = sqlx::query(
         r#"
         INSERT INTO tap_receipts
-            (signer_address, chain_id, timestamp_ns, nonce, value, signature, metadata)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (signer_address, payer_address, chain_id, timestamp_ns, nonce, value, signature, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         "#,
     )
-    .bind(format!("{:?}", validated.signer))   // lowercase hex with 0x prefix
+    .bind(format!("{:?}", validated.signer))   // gateway signer (authorized_senders)
+    .bind(format!("{:?}", validated.payer))    // consumer — whose escrow is charged
     .bind(chain_id as i64)
     .bind(validated.receipt.timestamp_ns as i64)
     .bind(validated.receipt.nonce as i64)
@@ -34,7 +35,7 @@ pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) ->
 /// A raw receipt row fetched for RAV aggregation.
 pub struct RawReceipt {
     pub id: i64,
-    pub signer_address: String,
+    pub payer_address: String,
     pub timestamp_ns: i64,
     pub nonce: i64,
     pub value: String,         // decimal u128
@@ -42,14 +43,14 @@ pub struct RawReceipt {
     pub metadata: Vec<u8>,
 }
 
-/// Fetch all receipts signed by `payer_hex` (e.g. "0xabc…").
+/// Fetch all receipts for `payer_hex` (consumer address, e.g. "0xabc…").
 /// Returns them oldest-first for deterministic ordering.
 pub async fn fetch_by_payer(pool: &Pool, payer_hex: &str) -> anyhow::Result<Vec<RawReceipt>> {
     let rows = sqlx::query(
         r#"
-        SELECT id, signer_address, timestamp_ns, nonce, value, signature, metadata
+        SELECT id, payer_address, timestamp_ns, nonce, value, signature, metadata
         FROM   tap_receipts
-        WHERE  signer_address = $1
+        WHERE  payer_address = $1
         ORDER  BY timestamp_ns ASC
         "#,
     )
@@ -61,7 +62,7 @@ pub async fn fetch_by_payer(pool: &Pool, payer_hex: &str) -> anyhow::Result<Vec<
         .into_iter()
         .map(|r| RawReceipt {
             id: r.get("id"),
-            signer_address: r.get("signer_address"),
+            payer_address: r.get("payer_address"),
             timestamp_ns: r.get("timestamp_ns"),
             nonce: r.get("nonce"),
             value: r.get("value"),
@@ -71,12 +72,12 @@ pub async fn fetch_by_payer(pool: &Pool, payer_hex: &str) -> anyhow::Result<Vec<
         .collect())
 }
 
-/// Return the distinct payer addresses present in tap_receipts.
+/// Return the distinct consumer (payer) addresses present in tap_receipts.
 pub async fn distinct_payers(pool: &Pool) -> anyhow::Result<Vec<String>> {
-    let rows = sqlx::query("SELECT DISTINCT signer_address FROM tap_receipts")
+    let rows = sqlx::query("SELECT DISTINCT payer_address FROM tap_receipts")
         .fetch_all(pool)
         .await?;
-    Ok(rows.into_iter().map(|r| r.get("signer_address")).collect())
+    Ok(rows.into_iter().map(|r| r.get("payer_address")).collect())
 }
 
 // ---------------------------------------------------------------------------

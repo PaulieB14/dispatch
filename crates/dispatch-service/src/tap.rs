@@ -11,7 +11,12 @@ use crate::error::ServiceError;
 /// A receipt that has passed all validation checks.
 pub struct ValidatedReceipt {
     pub receipt: dispatch_tap::Receipt,
+    /// Address that signed the receipt (the gateway's operator key).
     pub signer: Address,
+    /// Consumer address whose escrow will be debited — extracted from receipt
+    /// metadata (first 20 bytes). Falls back to `signer` for old receipts that
+    /// pre-date the consumer-pays model.
+    pub payer: Address,
     pub signature: String,
 }
 
@@ -56,9 +61,14 @@ pub fn validate_receipt(
         return Err(ServiceError::UnauthorizedSender(signer.to_string()));
     }
 
+    // Consumer address is the first 20 bytes of metadata (encoded by the gateway).
+    // Falls back to the signer for receipts from older gateway versions.
+    let payer = dispatch_tap::payer_from_metadata(&r.metadata).unwrap_or(signer);
+
     Ok(ValidatedReceipt {
         receipt: signed.receipt,
         signer,
+        payer,
         signature: signed.signature,
     })
 }

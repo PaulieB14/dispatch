@@ -1,6 +1,6 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Instant};
 
-use alloy_primitives::keccak256;
+use alloy_primitives::{keccak256, Address, Bytes};
 use axum::{
     extract::{ConnectInfo, Path, State},
     http::HeaderMap,
@@ -15,7 +15,6 @@ use tokio::task::JoinSet;
 
 use crate::{config::CapabilityTier, error::GatewayError, metrics, registry::Provider, selector, server::AppState};
 use dispatch_tap::create_receipt;
-use alloy_primitives::Bytes;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -23,20 +22,112 @@ pub fn router() -> Router<AppState> {
         .route("/rpc", post(rpc_handler_unified))
 }
 
+/// Route handler for POST /rpc/{chain_id}
+async fn rpc_handler(
+    State(state): State<AppState>,
+    Path(chain_id): Path<u64>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Response, GatewayError> {
+    dispatch_rpc(state, chain_id, peer, headers, body).await
+}
+
 /// Unified multi-chain endpoint — chain selected via the `X-Chain-Id` header.
 /// Defaults to Ethereum mainnet (chain ID 1) when the header is absent or unparseable.
 async fn rpc_handler_unified(
-    state: State<AppState>,
+    State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    body: Json<Value>,
+    Json(body): Json<Value>,
 ) -> Result<Response, GatewayError> {
     let chain_id: u64 = headers
         .get("x-chain-id")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
-    rpc_handler(state, Path(chain_id), ConnectInfo(peer), body).await
+    dispatch_rpc(state, chain_id, peer, headers, body).await
+}
+
+/// Shared dispatch logic. Extracts consumer address, applies rate limit,
+/// then handles single or batch JSON-RPC.
+async fn dispatch_rpc(
+    state: AppState,
+    chain_id: u64,
+    peer: SocketAddr,
+    headers: HeaderMap,
+    body: Value,
+) -> Result<Response, GatewayError> {
+    // --- Consumer address required ---
+    let consumer = extract_consumer_address(&headers)?;
+
+    // --- Per-IP rate limiting ---
+    if let Some(limiter) = &state.rate_limiter {
+        if limiter.check_key(&peer.ip()).is_err() {
+            return Err(GatewayError::RateLimited);
+        }
+    }
+
+    match body {
+        Value::Array(items) => {
+            if items.is_empty() {
+                return Err(GatewayError::InvalidRequest("empty batch".to_string()));
+            }
+            let requests: Vec<JsonRpcRequest> = items
+                .into_iter()
+                .map(serde_json::from_value)
+                .collect::<Result<_, _>>()
+                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
+
+            let responses: Vec<Value> = join_all(
+                requests.iter().map(|req| process_request(&state, chain_id, req, consumer)),
+            )
+            .await
+            .into_iter()
+            .map(|r| match r {
+                Ok((resp, _attestation)) => serde_json::to_value(resp).unwrap_or(Value::Null),
+                Err(e) => json!({
+                    "jsonrpc": "2.0",
+                    "id": Value::Null,
+                    "error": { "code": -32000, "message": e.to_string() }
+                }),
+            })
+            .collect();
+
+            Ok(Json(Value::Array(responses)).into_response())
+        }
+        Value::Object(_) => {
+            let request: JsonRpcRequest = serde_json::from_value(body)
+                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
+            let (response, attestation) = process_request(&state, chain_id, &request, consumer).await?;
+            let mut resp = Json(response).into_response();
+            if let Some(att) = attestation {
+                if let Ok(val) = att.parse() {
+                    resp.headers_mut().insert("x-drpc-attestation", val);
+                }
+            }
+            Ok(resp)
+        }
+        _ => Err(GatewayError::InvalidRequest(
+            "expected JSON object or array".to_string(),
+        )),
+    }
+}
+
+/// Extract and validate the `X-Consumer-Address` header.
+///
+/// Consumers must include their Ethereum address with every request. The gateway
+/// encodes this address in the TAP receipt metadata so providers can track
+/// per-consumer escrow and produce consumer-specific RAVs.
+fn extract_consumer_address(headers: &HeaderMap) -> Result<Address, GatewayError> {
+    let raw = headers
+        .get("x-consumer-address")
+        .ok_or(GatewayError::ConsumerAddressRequired)?
+        .to_str()
+        .map_err(|_| GatewayError::InvalidConsumerAddress("non-UTF8 header value".to_string()))?;
+
+    raw.parse::<Address>()
+        .map_err(|_| GatewayError::InvalidConsumerAddress(raw.to_string()))
 }
 
 // ---------------------------------------------------------------------------
@@ -143,69 +234,6 @@ fn requires_quorum(method: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Handler — single and batch
-// ---------------------------------------------------------------------------
-
-async fn rpc_handler(
-    State(state): State<AppState>,
-    Path(chain_id): Path<u64>,
-    ConnectInfo(peer): ConnectInfo<SocketAddr>,
-    Json(body): Json<Value>,
-) -> Result<Response, GatewayError> {
-    // Per-IP rate limiting.
-    if let Some(limiter) = &state.rate_limiter {
-        if limiter.check_key(&peer.ip()).is_err() {
-            return Err(GatewayError::RateLimited);
-        }
-    }
-
-    match body {
-        Value::Array(items) => {
-            if items.is_empty() {
-                return Err(GatewayError::InvalidRequest("empty batch".to_string()));
-            }
-            let requests: Vec<JsonRpcRequest> = items
-                .into_iter()
-                .map(serde_json::from_value)
-                .collect::<Result<_, _>>()
-                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
-
-            let responses: Vec<Value> = join_all(
-                requests.iter().map(|req| process_request(&state, chain_id, req)),
-            )
-            .await
-            .into_iter()
-            .map(|r| match r {
-                Ok((resp, _attestation)) => serde_json::to_value(resp).unwrap_or(Value::Null),
-                Err(e) => json!({
-                    "jsonrpc": "2.0",
-                    "id": Value::Null,
-                    "error": { "code": -32000, "message": e.to_string() }
-                }),
-            })
-            .collect();
-
-            Ok(Json(Value::Array(responses)).into_response())
-        }
-        Value::Object(_) => {
-            let request: JsonRpcRequest = serde_json::from_value(body)
-                .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
-            let (response, attestation) = process_request(&state, chain_id, &request).await?;
-            let mut resp = Json(response).into_response();
-            if let Some(att) = attestation {
-                if let Ok(val) = att.parse() {
-                    resp.headers_mut().insert("x-drpc-attestation", val);
-                }
-            }
-            Ok(resp)
-        }
-        _ => Err(GatewayError::InvalidRequest(
-            "expected JSON object or array".to_string(),
-        )),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Core dispatch
 // ---------------------------------------------------------------------------
 
@@ -213,6 +241,7 @@ async fn process_request(
     state: &AppState,
     chain_id: u64,
     request: &JsonRpcRequest,
+    consumer: Address,
 ) -> Result<(JsonRpcResponse, Option<String>), GatewayError> {
     request.validate()?;
 
@@ -251,12 +280,17 @@ async fn process_request(
     let cu = cu_weight_for(&request.method);
     let receipt_value = cu as u128 * state.config.tap.base_price_per_cu;
 
+    // Encode the consumer address as receipt metadata (first 20 bytes).
+    // Providers extract this to determine whose escrow to charge and to
+    // produce per-consumer RAVs pointing at the correct on-chain escrow slot.
+    let consumer_metadata = Bytes::copy_from_slice(consumer.as_slice());
+
     let start = Instant::now();
 
     let (response, attestation, winner) = if requires_quorum(&request.method) {
-        dispatch_quorum(state, chain_id, request, &candidates, receipt_value).await?
+        dispatch_quorum(state, chain_id, request, &candidates, receipt_value, consumer_metadata).await?
     } else {
-        dispatch_concurrent(state, chain_id, request, &candidates, receipt_value).await?
+        dispatch_concurrent(state, chain_id, request, &candidates, receipt_value, consumer_metadata).await?
     };
 
     let duration = start.elapsed().as_secs_f64();
@@ -267,6 +301,7 @@ async fn process_request(
         method = %request.method,
         chain_id,
         provider = %winner.endpoint,
+        consumer = %consumer,
         cu,
         "served"
     );
@@ -327,6 +362,7 @@ async fn dispatch_concurrent(
     request: &JsonRpcRequest,
     candidates: &[Arc<Provider>],
     receipt_value: u128,
+    consumer_metadata: Bytes,
 ) -> Result<(JsonRpcResponse, Option<String>, Arc<Provider>), GatewayError> {
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
@@ -341,6 +377,7 @@ async fn dispatch_concurrent(
         let p = provider.clone();
         let params_json = params_json.clone();
         let method = request.method.clone();
+        let metadata = consumer_metadata.clone();
 
         set.spawn(async move {
             let signed = create_receipt(
@@ -349,7 +386,7 @@ async fn dispatch_concurrent(
                 data_service,
                 p.address,
                 receipt_value,
-                Bytes::default(),
+                metadata,
             )
             .map_err(|e| e.to_string())?;
 
@@ -426,6 +463,7 @@ async fn dispatch_quorum(
     request: &JsonRpcRequest,
     candidates: &[Arc<Provider>],
     receipt_value: u128,
+    consumer_metadata: Bytes,
 ) -> Result<(JsonRpcResponse, Option<String>, Arc<Provider>), GatewayError> {
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
@@ -439,6 +477,7 @@ async fn dispatch_quorum(
         let p = provider.clone();
         let params_json = params_json.clone();
         let method = request.method.clone();
+        let metadata = consumer_metadata.clone();
 
         async move {
             let signed = create_receipt(
@@ -447,7 +486,7 @@ async fn dispatch_quorum(
                 data_service,
                 p.address,
                 receipt_value,
-                Bytes::default(),
+                metadata,
             )
             .map_err(|e| e.to_string())?;
 
@@ -683,6 +722,43 @@ mod tests {
         assert_eq!(cu_weight_for("debug_traceCall"), 10);
     }
 
+    // --- extract_consumer_address ---
+
+    #[test]
+    fn extract_consumer_address_missing_header() {
+        let headers = HeaderMap::new();
+        assert!(matches!(
+            extract_consumer_address(&headers),
+            Err(GatewayError::ConsumerAddressRequired)
+        ));
+    }
+
+    #[test]
+    fn extract_consumer_address_invalid_address() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-consumer-address", "not-an-address".parse().unwrap());
+        assert!(matches!(
+            extract_consumer_address(&headers),
+            Err(GatewayError::InvalidConsumerAddress(_))
+        ));
+    }
+
+    #[test]
+    fn extract_consumer_address_valid() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-consumer-address",
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap(),
+        );
+        let addr = extract_consumer_address(&headers).unwrap();
+        assert_eq!(
+            addr,
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+                .parse::<Address>()
+                .unwrap()
+        );
+    }
+
     // --- verify_attestation ---
 
     #[test]
@@ -697,6 +773,7 @@ mod tests {
 
     #[test]
     fn verify_attestation_signer_mismatch_returns_none() {
+        use dispatch_tap::address_from_key;
         use k256::ecdsa::SigningKey;
 
         let key = SigningKey::from_slice(&[0x42u8; 32]).unwrap();
@@ -720,6 +797,8 @@ mod tests {
         sig_bytes[..64].copy_from_slice(&sig.to_bytes());
         sig_bytes[64] = rec_id.to_byte() + 27;
         let sig_hex = format!("0x{}", hex::encode(sig_bytes));
+
+        let _signer = address_from_key(&key);
 
         // Correct signature but wrong stated signer → mismatch
         let att = json!({
