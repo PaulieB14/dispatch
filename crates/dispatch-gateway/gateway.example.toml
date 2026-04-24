@@ -25,9 +25,9 @@ data_service_address = "0x0000000000000000000000000000000000000000"
 # Break-even vs Alchemy on eth_call at ~$0.10/GRT. See config.rs pricing_math test.
 base_price_per_cu = 4_000_000_000_000
 
-eip712_domain_name = "TAP"
+eip712_domain_name = "GraphTallyCollector"
 eip712_chain_id = 42161
-eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2be0111A9e"
+eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
 
 [qos]
 probe_interval_secs = 10
