@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_GATEWAY: ghcr.io/${{ github.repository_owner }}/dispatch-gateway
+  IMAGE_SERVICE: ghcr.io/${{ github.repository_owner }}/dispatch-service
+
+jobs:
+  build-and-push:
+    name: Build & push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── Gateway ──────────────────────────────────────────────────────────────
+
+      - name: Gateway metadata
+        id: meta-gateway
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_GATEWAY }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build & push gateway
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: gateway
+          push: true
+          tags: ${{ steps.meta-gateway.outputs.tags }}
+          labels: ${{ steps.meta-gateway.outputs.labels }}
+          cache-from: type=gha,scope=gateway
+          cache-to: type=gha,mode=max,scope=gateway
+
+      # ── Service ──────────────────────────────────────────────────────────────
+
+      - name: Service metadata
+        id: meta-service
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_SERVICE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build & push service
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: service
+          push: true
+          tags: ${{ steps.meta-service.outputs.tags }}
+          labels: ${{ steps.meta-service.outputs.labels }}
+          cache-from: type=gha,scope=service
+          cache-to: type=gha,mode=max,scope=service
