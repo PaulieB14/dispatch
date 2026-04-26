@@ -14,10 +14,9 @@ operator_private_key     = "${DISPATCH_OPERATOR_PRIVATE_KEY}"
 
 [tap]
 data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
-# Empty = accept any signer. Escrow check at (signer, GraphTallyCollector,
-# provider) gates which receipts actually settle — receipts signed by the
-# Lodestar gateway (0x7D14) match the escrow cargopete funded for us.
-authorized_senders        = []
+# Public Dispatch gateway signer. Per cargopete's docs (commit 89c51ca),
+# providers using the public Lodestar gateway should whitelist its signer.
+authorized_senders        = ["0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9"]
 eip712_domain_name        = "GraphTallyCollector"
 eip712_chain_id           = 42161
 eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
