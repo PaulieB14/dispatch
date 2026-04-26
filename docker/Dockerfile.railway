@@ -1,0 +1,45 @@
+# Railway-specific Dockerfile.
+# Same build as docker/Dockerfile.service, but runtime layer adds envsubst
+# (gettext-base) and an entrypoint that templates config.toml from env vars.
+#
+# Build context = repo root. Build command in Railway service settings:
+#   Dockerfile path: docker/Dockerfile.railway
+
+# ── Build stage (identical to Dockerfile.service) ────────────────────────────
+FROM rust:1.88-bookworm AS builder
+
+WORKDIR /build
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates/dispatch-tap/Cargo.toml     crates/dispatch-tap/Cargo.toml
+COPY crates/dispatch-gateway/Cargo.toml crates/dispatch-gateway/Cargo.toml
+COPY crates/dispatch-service/Cargo.toml crates/dispatch-service/Cargo.toml
+
+RUN mkdir -p crates/dispatch-tap/src \
+             crates/dispatch-gateway/src \
+             crates/dispatch-service/src \
+ && echo 'pub fn stub() {}' > crates/dispatch-tap/src/lib.rs \
+ && echo 'fn main() {}' > crates/dispatch-gateway/src/main.rs \
+ && echo 'fn main() {}' > crates/dispatch-service/src/main.rs \
+ && cargo build --release -p dispatch-service 2>/dev/null; true
+
+COPY crates/ crates/
+RUN touch crates/dispatch-service/src/main.rs && \
+    cargo build --release -p dispatch-service
+
+# ── Runtime stage with envsubst entrypoint ───────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 curl gettext-base \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/target/release/dispatch-service /usr/local/bin/dispatch-service
+COPY docker/config.railway.template.toml /etc/dispatch/config.template.toml
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 7700
+ENV CONFIG_TEMPLATE=/etc/dispatch/config.template.toml
+ENV DISPATCH_CONFIG=/etc/dispatch/config.toml
+ENTRYPOINT ["/entrypoint.sh"]

@@ -18,3 +18,4 @@ subgraph/build/
 
 # Foundry broadcast artifacts
 contracts/broadcast/
+*.bak

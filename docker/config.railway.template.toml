@@ -1,0 +1,33 @@
+# Railway dispatch-service config TEMPLATE.
+# entrypoint.sh runs envsubst on this file at container startup.
+# Safe to commit — contains no secrets.
+
+[server]
+host = "0.0.0.0"
+port = 7700
+
+[indexer]
+service_provider_address = "${SERVICE_PROVIDER_ADDRESS}"
+operator_private_key     = "${DISPATCH_OPERATOR_PRIVATE_KEY}"
+
+[tap]
+data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+authorized_senders        = []
+eip712_domain_name        = "GraphTallyCollector"
+eip712_chain_id           = 42161
+eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
+escrow_check_rpc_url      = "${DISPATCH_ARBITRUM_RPC}"
+# aggregator_url left unset until a public Lodestar gateway URL is known
+
+[chains]
+supported = [42161]
+
+[chains.backends]
+"42161" = "${DISPATCH_ARBITRUM_BACKEND}"
+
+[database]
+url = "${DATABASE_URL}"
+
+[collector]
+arbitrum_rpc_url      = "${DISPATCH_ARBITRUM_RPC}"
+collect_interval_secs = 3600
