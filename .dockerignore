@@ -5,3 +5,5 @@ contracts/cache/
 .git/
 .github/
 docker/*.toml
+# Whitelist Railway envsubst template — no secrets, only ${VAR} placeholders.
+!docker/config.railway.template.toml
