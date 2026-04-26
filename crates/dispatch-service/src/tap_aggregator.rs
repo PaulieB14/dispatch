@@ -109,7 +109,17 @@ async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &r
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("aggregator returned {status}: {text}");
+            // Skip-and-continue: a failed batch for one payer shouldn't
+            // block other payers' batches from being attempted in the
+            // same cycle. Useful when stale paulieb-tagged receipts
+            // (pre-patch) live alongside new 0x7D14-tagged receipts.
+            tracing::warn!(
+                payer = %payer_hex,
+                status = %status,
+                response = text,
+                "aggregator rejected this payer's batch — continuing to next"
+            );
+            continue;
         }
 
         let resp_json: serde_json::Value = resp.json().await?;
