@@ -20,6 +20,10 @@ for var in SERVICE_PROVIDER_ADDRESS DISPATCH_OPERATOR_PRIVATE_KEY DISPATCH_ARBIT
   fi
 done
 
+# Railway injects PORT dynamically; default 7700 for non-Railway runs.
+export PORT="${PORT:-7700}"
+echo "binding to port: $PORT" >&2
+
 mkdir -p "$(dirname "$CONFIG_OUT")"
 envsubst < "$CONFIG_TEMPLATE" > "$CONFIG_OUT"
 
