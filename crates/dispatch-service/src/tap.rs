@@ -64,9 +64,20 @@ pub fn validate_receipt(
         return Err(ServiceError::UnauthorizedSender(signer.to_string()));
     }
 
-    // Consumer address is the first 20 bytes of metadata (encoded by the gateway).
-    // Falls back to the signer for receipts from older gateway versions.
-    let payer = dispatch_tap::payer_from_metadata(&r.metadata).unwrap_or(signer);
+    // OVERRIDE: use the receipt signer as the payer field.
+    //
+    // Upstream extracts a consumer wallet from metadata first 20 bytes, but
+    // the public Lodestar gateway's /rav/aggregate endpoint does a strict
+    // `recovered_signer == payer` check that rejects mismatches. Cargopete
+    // funds escrow at (gateway_signer, GraphTallyCollector, provider) for
+    // each provider, so using the signer as payer matches both the gateway
+    // aggregator's expectation and the on-chain escrow lookup.
+    //
+    // Tradeoff: breaks compatibility with future consumers who fund their
+    // own (consumer_wallet, GTC, provider) escrow buckets. Revisit when
+    // cargopete ships a delegated-signer fix to the gateway.
+    let _metadata_payer = dispatch_tap::payer_from_metadata(&r.metadata);
+    let payer = signer;
     // Method name is encoded as UTF-8 at bytes 20+ (gateway versions >= this change).
     let method = dispatch_tap::method_from_metadata(&r.metadata);
 
