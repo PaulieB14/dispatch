@@ -19,7 +19,8 @@ eip712_domain_name        = "GraphTallyCollector"
 eip712_chain_id           = 42161
 eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
 escrow_check_rpc_url      = "${DISPATCH_ARBITRUM_RPC}"
-# aggregator_url left unset until a public Lodestar gateway URL is known
+# Public Lodestar gateway — service POSTs receipts to ${aggregator_url}/rav/aggregate
+aggregator_url            = "${DISPATCH_AGGREGATOR_URL}"
 
 [chains]
 supported = [42161]
