@@ -4,8 +4,11 @@ Everything you need the day your 10,000 GRT lands. Estimated time: ~30 minutes f
 
 ## Pre-flight (do these BEFORE GRT arrives)
 
-- [ ] **Provider wallet picked.** Fresh MetaMask EOA recommended. Set as `PROVIDER_ADDRESS`.
-- [ ] **paymentsDestination wallet picked.** Cold wallet. Can equal provider, or use `graphadvocate.eth` (`0x575267eED09c338FAE5716A486A7B58A5749A292`).
+- [x] **Provider wallet picked.** Using **graphadvocate.eth** = `0x575267eED09c338FAE5716A486A7B58A5749A292`.
+  - Note: this private key is also `GA_BASE_WALLET_PK` on Railway. Rotate the
+    outbound wallet (generate a fresh one for `x402_outreach.py`) after staking
+    if you want the staked GRT under a key that isn't on a cloud server.
+- [ ] **paymentsDestination wallet picked.** Cold wallet recommended. Defaults to provider if omitted.
 - [ ] **Operator key generated.** ✅ Already done — `0x6722C12779980a62edAe4895B45585214e0671eB` at `~/.dispatch_operator_key`.
 - [ ] **Alchemy Arbitrum URL ready.** ✅ Stored in `~/.dispatch_secrets.env`.
 - [ ] **Repo pushed to GitHub.** Push your fork of `dispatch-provider` so Railway can pull it.
@@ -16,7 +19,7 @@ Everything you need the day your 10,000 GRT lands. Estimated time: ~30 minutes f
 ### Step 1 — Verify balance
 
 ```bash
-export PROVIDER_ADDRESS=0xYOUR_PROVIDER_ADDRESS
+export PROVIDER_ADDRESS=0x575267eED09c338FAE5716A486A7B58A5749A292  # graphadvocate.eth
 export RPC=https://arb1.arbitrum.io/rpc
 
 cast call 0x9623063377AD1B27544C965cCd7342f7EA7e88C7 \
@@ -108,7 +111,7 @@ In Railway dashboard → dispatch-service → Variables:
 
 | Variable | Value |
 |---|---|
-| `SERVICE_PROVIDER_ADDRESS` | `0xYOUR_PROVIDER_ADDRESS` |
+| `SERVICE_PROVIDER_ADDRESS` | `0x575267eED09c338FAE5716A486A7B58A5749A292` |
 | `DISPATCH_OPERATOR_PRIVATE_KEY` | `cat ~/.dispatch_operator_key` |
 | `DISPATCH_ARBITRUM_RPC` | `cat ~/.dispatch_secrets.env` (DISPATCH_ARBITRUM_RPC line) |
 | `DISPATCH_ARBITRUM_BACKEND` | same Alchemy URL |
@@ -135,7 +138,7 @@ curl https://dispatch-service-production.up.railway.app/health
 ```bash
 cd ~/dispatch-provider/indexer-agent
 npm install
-SERVICE_PROVIDER_ADDRESS=0xYOUR_PROVIDER_ADDRESS \
+SERVICE_PROVIDER_ADDRESS=0x575267eED09c338FAE5716A486A7B58A5749A292 \
 DISPATCH_OPERATOR_PRIVATE_KEY=$(cat ~/.dispatch_operator_key) \
 DISPATCH_ARBITRUM_RPC=$(grep DISPATCH_ARBITRUM_RPC ~/.dispatch_secrets.env | cut -d'"' -f2) \
 PAYMENTS_DESTINATION=0xYOUR_COLD_WALLET \
