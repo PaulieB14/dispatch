@@ -48,6 +48,7 @@ interface IRPCDataService {
     event ServiceStarted(address indexed provider, uint64 indexed chainId, CapabilityTier tier, string endpoint);
     event ServiceStopped(address indexed provider, uint64 indexed chainId, CapabilityTier tier);
     event FeesBurned(address indexed provider, uint256 amount);
+    event FeesWithdrawn(address indexed to, uint256 amount);
 
     // -------------------------------------------------------------------------
     // Errors

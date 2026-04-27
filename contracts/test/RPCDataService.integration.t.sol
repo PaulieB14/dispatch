@@ -248,9 +248,9 @@ contract RPCDataServiceIntegrationTest is Test {
             abi.encode(IGraphTallyCollector.SignedRAV({rav: rav, signature: sig}), GRT_AMOUNT)
         );
 
-        // 1% is burned (BURN_CUT_PPM), remainder reaches paymentWallet.
-        uint256 burned = GRT_AMOUNT * service.BURN_CUT_PPM() / 1_000_000;
-        assertEq(grt.balanceOf(paymentWallet), walletBefore + GRT_AMOUNT - burned);
+        // 2% total cut: 1% burned + 1% retained by data service. Remainder reaches paymentWallet.
+        uint256 totalCut = GRT_AMOUNT * (service.BURN_CUT_PPM() + service.DATA_SERVICE_CUT_PPM()) / 1_000_000;
+        assertEq(grt.balanceOf(paymentWallet), walletBefore + GRT_AMOUNT - totalCut);
         assertEq(grt.balanceOf(provider), 0); // not the provider address itself
     }
 

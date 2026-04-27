@@ -43,6 +43,9 @@ contract RPCDataService is
     /// @notice Fraction of collected fees burned by the data service, in PPM (1% = 10_000).
     uint256 public constant BURN_CUT_PPM = 10_000;
 
+    /// @notice Fraction of collected fees retained by the data service as revenue, in PPM (1% = 10_000).
+    uint256 public constant DATA_SERVICE_CUT_PPM = 10_000;
+
     /// @notice Absolute lower bound on the thawing period.
     uint64 public constant MIN_THAWING_PERIOD = 14 days;
 
@@ -288,21 +291,21 @@ contract RPCDataService is
         // Collect via GraphTallyCollector → PaymentsEscrow → GraphPayments.
         // The RAV's dataService field must equal address(this) — enforced by GraphTallyCollector.
         // Fees flow to paymentsDestination[serviceProvider], not necessarily serviceProvider itself.
-        // BURN_CUT_PPM of the collected amount is routed to this contract as the data service cut,
-        // then immediately burned below.
+        // 2% total is routed to this contract as the data service cut: 1% burned, 1% retained as revenue.
         uint256 balanceBefore = _graphToken().balanceOf(address(this));
         fees = GRAPH_TALLY_COLLECTOR.collect(
             paymentType,
             abi.encode(
                 signedRav,
-                BURN_CUT_PPM,
+                BURN_CUT_PPM + DATA_SERVICE_CUT_PPM,
                 paymentsDestination[serviceProvider]
             ),
             tokensToCollect
         );
 
-        uint256 burned = _graphToken().balanceOf(address(this)) - balanceBefore;
-        if (burned > 0) {
+        uint256 received = _graphToken().balanceOf(address(this)) - balanceBefore;
+        if (received > 0) {
+            uint256 burned = received * BURN_CUT_PPM / (BURN_CUT_PPM + DATA_SERVICE_CUT_PPM);
             _graphToken().burn(burned);
             emit FeesBurned(serviceProvider, burned);
         }
@@ -354,5 +357,12 @@ contract RPCDataService is
     /// @notice Grant or revoke pause guardian status.
     function setPauseGuardian(address guardian, bool allowed) external onlyOwner {
         _setPauseGuardian(guardian, allowed);
+    }
+
+    /// @notice Withdraw accumulated data service revenue to `to`.
+    function withdrawFees(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "zero address");
+        _graphToken().transfer(to, amount);
+        emit FeesWithdrawn(to, amount);
     }
 }
