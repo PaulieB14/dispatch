@@ -5,6 +5,7 @@ import {Script} from "forge-std/Script.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RPCDataService} from "../src/RPCDataService.sol";
 import {IHorizonStakingTypes} from "@graphprotocol/interfaces/contracts/horizon/internal/IHorizonStakingTypes.sol";
@@ -168,9 +169,12 @@ contract SetupE2E is Script {
         GraphTallyCollector tallyCollector =
             new GraphTallyCollector("GraphTallyCollector", "1", address(controller), 0);
 
-        // 7. RPCDataService — owner = deployer for the addChain call below.
-        RPCDataService service =
-            new RPCDataService(deployer, address(controller), address(tallyCollector), pauseGuardian);
+        // 7. RPCDataService (impl + proxy) — owner = deployer for the addChain call below.
+        RPCDataService serviceImpl = new RPCDataService(address(controller), address(tallyCollector));
+        RPCDataService service = RPCDataService(address(new ERC1967Proxy(
+            address(serviceImpl),
+            abi.encodeCall(RPCDataService.initialize, (deployer, pauseGuardian))
+        )));
 
         // 8. Provision stake for the provider in the mock staking contract.
         staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);

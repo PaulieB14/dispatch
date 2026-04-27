@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.27;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import {DataService} from "@graphprotocol/horizon/data-service/DataService.sol";
 import {DataServiceFees} from "@graphprotocol/horizon/data-service/extensions/DataServiceFees.sol";
-import {DataServicePausable} from "@graphprotocol/horizon/data-service/extensions/DataServicePausable.sol";
+import {DataServicePausableUpgradeable} from
+    "@graphprotocol/horizon/data-service/extensions/DataServicePausableUpgradeable.sol";
 import {IGraphPayments} from "@graphprotocol/horizon/interfaces/IGraphPayments.sol";
 import {IGraphTallyCollector} from "@graphprotocol/horizon/interfaces/IGraphTallyCollector.sol";
 import {IHorizonStaking} from "@graphprotocol/horizon/interfaces/IHorizonStaking.sol";
@@ -21,10 +23,16 @@ import {IRPCDataService} from "./interfaces/IRPCDataService.sol";
 /// submitting signed RAVs to collect().
 ///
 /// @dev Inherits DataService (provision utilities, GraphDirectory), DataServiceFees
-///      (stake-backed fee locking), DataServicePausable (emergency stop).
-///      Deployed on Arbitrum One — all Horizon contracts live there.
-contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePausable, IRPCDataService {
-
+///      (stake-backed fee locking), DataServicePausableUpgradeable (emergency stop).
+///      Deployed as a UUPS upgradeable proxy on Arbitrum One.
+contract RPCDataService is
+    OwnableUpgradeable,
+    UUPSUpgradeable,
+    DataService,
+    DataServiceFees,
+    DataServicePausableUpgradeable,
+    IRPCDataService
+{
     // -------------------------------------------------------------------------
     // Constants
     // -------------------------------------------------------------------------
@@ -57,33 +65,53 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
     mapping(address => ChainRegistration[]) internal _providerChains;
 
     /// @notice GraphTallyCollector used to redeem TAP receipts on-chain.
+    /// @dev Immutable — baked into implementation bytecode, accessible via delegatecall.
     IGraphTallyCollector private immutable GRAPH_TALLY_COLLECTOR;
 
     /// @notice Governance-adjustable thawing period (lower-bounded by MIN_THAWING_PERIOD).
     uint64 public minThawingPeriod;
 
+    /// @dev Reserved storage slots for future upgrades.
+    uint256[50] private __gap;
+
     // -------------------------------------------------------------------------
-    // Constructor
+    // Constructor (implementation only)
     // -------------------------------------------------------------------------
 
-    /// @param owner_ Initial owner (governance multisig).
+    /// @dev Sets immutables and locks the implementation against direct initialisation.
+    ///      All mutable setup happens in initialize().
     /// @param controller The Graph Protocol controller address (GraphDirectory).
     /// @param graphTallyCollector Address of the deployed GraphTallyCollector.
-    /// @param pauseGuardian Address authorised to pause the service in an emergency.
-    constructor(
-        address owner_,
-        address controller,
-        address graphTallyCollector,
-        address pauseGuardian
-    ) Ownable(owner_) DataService(controller) {
+    constructor(address controller, address graphTallyCollector) DataService(controller) {
         GRAPH_TALLY_COLLECTOR = IGraphTallyCollector(graphTallyCollector);
+        _disableInitializers();
+    }
+
+    // -------------------------------------------------------------------------
+    // Initializer (proxy)
+    // -------------------------------------------------------------------------
+
+    /// @notice Initialise the proxy. Called exactly once via ERC1967Proxy deployment.
+    /// @param owner_ Initial owner (governance multisig).
+    /// @param pauseGuardian Address authorised to pause the service in an emergency.
+    function initialize(address owner_, address pauseGuardian) external initializer {
+        __Ownable_init(owner_);
+        __DataService_init();
+        __DataServicePausable_init();
+
         minThawingPeriod = MIN_THAWING_PERIOD;
-        // Configure ProvisionManager ranges (used by _checkProvisionTokens/_checkProvisionParameters).
         _setProvisionTokensRange(DEFAULT_MIN_PROVISION, type(uint256).max);
         _setThawingPeriodRange(MIN_THAWING_PERIOD, type(uint64).max);
         _setVerifierCutRange(0, uint32(1_000_000)); // 0–100% in PPM
         _setPauseGuardian(pauseGuardian, true);
     }
+
+    // -------------------------------------------------------------------------
+    // UUPS
+    // -------------------------------------------------------------------------
+
+    /// @notice Authorise a contract upgrade. Owner-only.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     // -------------------------------------------------------------------------
     // Governance
@@ -134,7 +162,7 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
             revert ProviderAlreadyRegistered(serviceProvider);
         }
 
-        // Validate provision meets protocol minimums (uses ranges set in constructor).
+        // Validate provision meets protocol minimums (uses ranges set in initialize).
         _checkProvisionTokens(serviceProvider);
         _checkProvisionParameters(serviceProvider, false);
 
@@ -315,5 +343,4 @@ contract RPCDataService is Ownable, DataService, DataServiceFees, DataServicePau
     function setPauseGuardian(address guardian, bool allowed) external onlyOwner {
         _setPauseGuardian(guardian, allowed);
     }
-
 }

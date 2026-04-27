@@ -4,6 +4,7 @@ pragma solidity ^0.8.27;
 import {Test} from "forge-std/Test.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RPCDataService} from "../src/RPCDataService.sol";
 import {IRPCDataService} from "../src/interfaces/IRPCDataService.sol";
@@ -185,7 +186,11 @@ contract RPCDataServiceIntegrationTest is Test {
         tallyCollector = new GraphTallyCollector("GraphTallyCollector", "1", address(controller), 0);
 
         // 7. Our contract under test.
-        service = new RPCDataService(owner, address(controller), address(tallyCollector), pauseGuardian);
+        RPCDataService serviceImpl = new RPCDataService(address(controller), address(tallyCollector));
+        service = RPCDataService(address(new ERC1967Proxy(
+            address(serviceImpl),
+            abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))
+        )));
 
         // 8. Governance: enable chain 1 (Ethereum mainnet).
         vm.prank(owner);
