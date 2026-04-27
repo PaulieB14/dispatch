@@ -13,7 +13,7 @@ service_provider_address = "${SERVICE_PROVIDER_ADDRESS}"
 operator_private_key     = "${DISPATCH_OPERATOR_PRIVATE_KEY}"
 
 [tap]
-data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address      = "0x7101D5C1A5c89C3647F5118da118E56C023bA0b9"
 # Public Dispatch gateway signer. Per cargopete's docs (commit 89c51ca),
 # providers using the public Lodestar gateway should whitelist its signer.
 authorized_senders        = ["0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9"]
