@@ -5,9 +5,23 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "docker/Dockerfile.railway"
+# Skip rebuilds for doc/script-only changes — keeps the provider online
+# while iterating on README, RFCs, agent cards, etc.
+watchPatterns = [
+    "crates/**",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain.toml",
+    "docker/**",
+    "railway.toml",
+]
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+# 60s is plenty for a Rust service that boots in <30s. The previous 300s
+# left a sick deploy looking healthy for 5 min before failover.
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
+# No max-retries cap: a payments-on-the-line provider shouldn't go dark
+# permanently after 10 transient failures (e.g. a brief Alchemy hiccup
+# during boot). Railway will keep restarting on failure.
