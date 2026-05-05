@@ -531,6 +531,22 @@ graph-node round-robins and retries automatically — dispatch goes first, Chain
 
 ---
 
+## Economics
+
+Providers earn GRT per request via the GraphTally micropayment system. The base price is `4_000_000_000_000` GRT wei per compute unit (CU), with CU cost scaling by method complexity:
+
+| Method | CUs | Per-provider receipt | USD at $0.09/GRT |
+|---|---|---|---|
+| `eth_blockNumber` | 1 | 4e-6 GRT | ~$1.08/M calls |
+| `eth_call` | 10 | 40e-6 GRT | ~$10.80/M calls |
+| `eth_getLogs` | 20 | 80e-6 GRT | ~$21.60/M calls |
+
+The gateway dispatches to 3 providers concurrently — all three get paid. Fees settle hourly on-chain via `RPCDataService.collect()`. The contract takes a 2% data service cut (1% burned, 1% retained) on top of the standard Horizon protocol tax.
+
+For a full breakdown — fee distribution, stake locking, break-even analysis, and current live numbers — see [docs/economics.md](docs/economics.md).
+
+---
+
 ## Relation to existing Graph Protocol infrastructure
 
 | Component | Status |
