@@ -18,7 +18,7 @@ Inspired by the [Q3 2026 "Experimental JSON-RPC Data Service"](https://thegraph.
 | `RPCDataService` contract | ✅ Live on Arbitrum One |
 | Subgraph | ✅ Live on The Graph Studio |
 | npm packages | ✅ Published (`@lodestar-dispatch/consumer-sdk`, `@lodestar-dispatch/indexer-agent`) |
-| Active providers | ✅ **1** — `https://rpc.cargopete.com` (Arbitrum One, Standard + Archive) |
+| Active providers | ✅ **1** — `https://rpc.cargopete.com` / `https://gateway.lodestar-dashboard.com` (Arbitrum One + Base, Archive + Debug) |
 | Consumer-pays escrow | ✅ Enforced — `X-Consumer-Address` required; no free queries |
 | Receipt signing & validation | ✅ Working — every request carries a signed EIP-712 TAP receipt |
 | Receipt persistence | ✅ Working — stored in `tap_receipts` table in postgres |
@@ -33,7 +33,7 @@ The full payment loop is working end-to-end on the live provider. Requests gener
 ```
 dispatch-smoke
   endpoint   : https://rpc.cargopete.com
-  chain_id   : 42161
+  chains     : 42161 (Arbitrum One), 8453 (Base)
   data_svc   : 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9
   signer     : 0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9
 
