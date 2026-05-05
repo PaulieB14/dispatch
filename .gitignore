@@ -18,3 +18,5 @@ subgraph/build/
 
 # Foundry broadcast artifacts
 contracts/broadcast/
+.env.local
+apps/dispatch-live/.vercel
