@@ -65,90 +65,103 @@ async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &r
     let endpoint = format!("{aggregator_url}/rav/aggregate");
 
     for payer_hex in payers {
-        let rows = fetch_by_payer(pool, &payer_hex).await?;
-        if rows.is_empty() {
-            continue;
+        if let Err(e) = aggregate_payer(pool, client, &endpoint, service_provider, data_service, &payer_hex).await {
+            tracing::warn!(payer = %payer_hex, "RAV aggregation failed for payer: {e:#}");
         }
-
-        // Reconstruct SignedReceipt structs from stored rows.
-        let receipts: Vec<dispatch_tap::SignedReceipt> = rows
-            .iter()
-            .map(|row| {
-                let value = row.value.parse::<u128>().unwrap_or(0);
-                dispatch_tap::SignedReceipt {
-                    receipt: dispatch_tap::Receipt {
-                        data_service,
-                        service_provider,
-                        timestamp_ns: row.timestamp_ns as u64,
-                        nonce: row.nonce as u64,
-                        value,
-                        metadata: Bytes::from(row.metadata.clone()),
-                    },
-                    signature: row.signature.clone(),
-                }
-            })
-            .collect();
-
-        let payer: alloy_primitives::Address = payer_hex
-            .parse()
-            .map_err(|_| anyhow::anyhow!("invalid payer address in db: {payer_hex}"))?;
-
-        let body = serde_json::json!({
-            "service_provider": service_provider,
-            "payer": payer,
-            "receipts": receipts,
-        });
-
-        let resp = client
-            .post(&endpoint)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| anyhow::anyhow!("POST {endpoint} failed: {e}"))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("aggregator returned {status}: {text}");
-        }
-
-        let resp_json: serde_json::Value = resp.json().await?;
-        let signed_rav: dispatch_tap::SignedRav =
-            serde_json::from_value(resp_json["signed_rav"].clone())?;
-
-        let rav = &signed_rav.rav;
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-
-        let collection_id_hex = format!("{:?}", rav.collection_id);
-        let payer_hex_lower = format!("{:?}", rav.payer);
-        let sp_hex = format!("{:?}", rav.service_provider);
-        let ds_hex = format!("{:?}", rav.data_service);
-
-        upsert_rav(
-            pool,
-            RavRow {
-                collection_id: &collection_id_hex,
-                payer_address: &payer_hex_lower,
-                service_provider: &sp_hex,
-                data_service: &ds_hex,
-                timestamp_ns: rav.timestamp_ns as i64,
-                value_aggregate: &rav.value_aggregate.to_string(),
-                signature: &signed_rav.signature,
-                last_updated: now_secs,
-            },
-        )
-        .await?;
-
-        tracing::info!(
-            payer = %payer_hex,
-            receipts = rows.len(),
-            value_aggregate = %rav.value_aggregate,
-            "RAV updated"
-        );
     }
+
+    Ok(())
+}
+async fn aggregate_payer(
+    pool: &Pool,
+    client: &reqwest::Client,
+    endpoint: &str,
+    service_provider: alloy_primitives::Address,
+    data_service: alloy_primitives::Address,
+    payer_hex: &str,
+) -> anyhow::Result<()> {
+    let rows = fetch_by_payer(pool, payer_hex).await?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let receipts: Vec<dispatch_tap::SignedReceipt> = rows
+        .iter()
+        .map(|row| {
+            let value = row.value.parse::<u128>().unwrap_or(0);
+            dispatch_tap::SignedReceipt {
+                receipt: dispatch_tap::Receipt {
+                    data_service,
+                    service_provider,
+                    timestamp_ns: row.timestamp_ns as u64,
+                    nonce: row.nonce as u64,
+                    value,
+                    metadata: Bytes::from(row.metadata.clone()),
+                },
+                signature: row.signature.clone(),
+            }
+        })
+        .collect();
+
+    let payer: alloy_primitives::Address = payer_hex
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid payer address in db: {payer_hex}"))?;
+
+    let body = serde_json::json!({
+        "service_provider": service_provider,
+        "payer": payer,
+        "receipts": receipts,
+    });
+
+    let resp = client
+        .post(endpoint)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("POST {endpoint} failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        anyhow::bail!("aggregator returned {status}: {text}");
+    }
+
+    let resp_json: serde_json::Value = resp.json().await?;
+    let signed_rav: dispatch_tap::SignedRav =
+        serde_json::from_value(resp_json["signed_rav"].clone())?;
+
+    let rav = &signed_rav.rav;
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let collection_id_hex = format!("{:?}", rav.collection_id);
+    let payer_hex_lower = format!("{:?}", rav.payer);
+    let sp_hex = format!("{:?}", rav.service_provider);
+    let ds_hex = format!("{:?}", rav.data_service);
+
+    upsert_rav(
+        pool,
+        RavRow {
+            collection_id: &collection_id_hex,
+            payer_address: &payer_hex_lower,
+            service_provider: &sp_hex,
+            data_service: &ds_hex,
+            timestamp_ns: rav.timestamp_ns as i64,
+            value_aggregate: &rav.value_aggregate.to_string(),
+            signature: &signed_rav.signature,
+            last_updated: now_secs,
+        },
+    )
+    .await?;
+
+    tracing::info!(
+        payer = %payer_hex,
+        receipts = rows.len(),
+        value_aggregate = %rav.value_aggregate,
+        "RAV updated"
+    );
 
     Ok(())
 }
