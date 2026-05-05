@@ -30,16 +30,18 @@ Fully pay-per-request via **GraphTally (TAP v2)** micropayments. No epoch, no al
 
 The gateway charges per **compute unit (CU)**, where one CU = `4_000_000_000_000` GRT wei = `4e-6 GRT`.
 
-Method complexity sets the CU cost:
+Method complexity sets the CU cost. Values below are confirmed from live receipt data:
 
-| RPC Method | CUs | Per-provider receipt | Consumer pays (×3 concurrent) |
-|---|---|---|---|
-| `eth_blockNumber` | 1 | 4e-6 GRT | 12e-6 GRT |
-| `eth_getBalance` | 5 | 20e-6 GRT | 60e-6 GRT |
-| `eth_call` | 10 | 40e-6 GRT | 120e-6 GRT |
-| `eth_getLogs` | 20 | 80e-6 GRT | 240e-6 GRT |
+| RPC Method | CUs | Per-provider receipt |
+|---|---|---|
+| `eth_chainId` | 1 | 4e-6 GRT |
+| `eth_getBlockByHash` | 5 | 20e-6 GRT |
+| `eth_getBlockByNumber` | 5 | 20e-6 GRT |
+| `eth_getBlockReceipts` | 10 | 40e-6 GRT |
+| `eth_call` | 10 | 40e-6 GRT |
+| `eth_getLogs` | 20 | 80e-6 GRT |
 
-**Why ×3?** The gateway dispatches to 3 providers concurrently ("first response wins" QoS model) and all three receive a signed receipt — that is the cost of censorship-resistance and latency optimisation. The consumer pays all three.
+**Concurrent dispatch multiplier:** The gateway is configured to dispatch to up to `concurrent_k = 3` providers simultaneously (first response wins), and all providers that respond receive a signed receipt — that is the cost of censorship-resistance and latency optimisation. With the network currently at 1 active provider, the effective multiplier is ×1. Once multiple providers are live, consumers pay the per-provider receipt value × k for each request.
 
 ### USD cost at different GRT prices
 
