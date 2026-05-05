@@ -81,7 +81,8 @@ async fn rpc_handler(
     }
 
     // --- Credit limit check (per consumer, not per gateway signer) ---
-    {
+    // Bypass consumers are exempt from the credit limit (they're trusted self-consumers).
+    if !bypass {
         let credit = state.consumer_credit.read().unwrap();
         let served = credit.get(&validated.payer).copied().unwrap_or(0);
         if served >= state.config.tap.credit_threshold {
