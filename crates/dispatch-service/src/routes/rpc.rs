@@ -60,7 +60,10 @@ async fn rpc_handler(
 
     // --- Escrow balance pre-check (cached 30 s) ---
     // Check the consumer's (payer's) escrow, not the gateway signer's.
-    if let Some(checker) = &state.escrow_checker {
+    let bypass = state.config.tap.bypass_consumers.contains(&validated.payer);
+    if bypass {
+        tracing::debug!(payer = %validated.payer, "escrow check bypassed (bypass_consumers list)");
+    } else if let Some(checker) = &state.escrow_checker {
         match checker.balance(validated.payer).await {
             Ok(0) => {
                 tracing::warn!(
