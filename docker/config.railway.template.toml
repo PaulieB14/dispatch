@@ -25,10 +25,14 @@ escrow_check_rpc_url      = "${DISPATCH_ARBITRUM_RPC}"
 aggregator_url            = "${DISPATCH_AGGREGATOR_URL}"
 
 [chains]
-supported = [42161]
+supported = [42161, 8453]
 
 [chains.backends]
 "42161" = "${DISPATCH_ARBITRUM_BACKEND}"
+# Base mainnet. Default to drpc.org public endpoint if env var unset.
+# Upgrade to Pinax / Chainstack / Alchemy if QoS scoring drops or rate
+# limits hit. Archive + traces required for Debug-tier provider serving.
+"8453"  = "${DISPATCH_BASE_BACKEND}"
 
 [database]
 url = "${DATABASE_URL}"
