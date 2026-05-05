@@ -74,7 +74,7 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "provision(address,address,uint256,uint32,uint64)" \
   $PROVIDER_ADDRESS \
   0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
-  10000000000000000000000 \
+  555000000000000000000 \
   1000000 \
   1209600 \
   --private-key $PROVIDER_KEY \
@@ -84,7 +84,7 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
 Arguments:
 - `serviceProvider` — your provider address
 - `dataService` — `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` (RPCDataService)
-- `tokens` — amount in wei, minimum `10000000000000000000000` (10,000 GRT)
+- `tokens` — amount in wei, minimum `555000000000000000000` (555 GRT)
 - `maxVerifierCut` — `1000000` (100% in PPM — the contract cannot slash, so this doesn't matter in practice)
 - `thawingPeriod` — `1209600` (14 days in seconds — the contract minimum)
 
@@ -280,7 +280,7 @@ Create `agent.config.json`:
 Run it:
 
 ```bash
-AGENT_CONFIG=./agent.config.json npx tsx src/index.ts
+AGENT_CONFIG=./agent.config.json npx dispatch-indexer-agent
 ```
 
 The agent calls `register()`, `startService()` for each entry in `services`, and `stopService()` / `deregister()` on SIGTERM. It reconciles on-chain state against the config on every run — safe to run on a cron or as a persistent daemon.
