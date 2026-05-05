@@ -47,7 +47,7 @@ dispatch-smoke
   5 passed, 0 failed
 ```
 
-To become a provider: stake ≥ 10,000 GRT on Arbitrum One, provision it to `RPCDataService`, run `dispatch-service` alongside your Ethereum node, and register via the indexer agent. Full guide: [Running a Provider](docs/src/providers.md).
+To become a provider: stake ≥ 555 GRT on Arbitrum One, provision it to `RPCDataService`, run `dispatch-service` alongside your Ethereum node, and register via the indexer agent. Full guide: [Running a Provider](docs/src/providers.md).
 
 ---
 
@@ -169,7 +169,7 @@ Key features:
 - `discoverProviders` — subgraph GraphQL query returning active providers for a given chain and tier
 - `selectProvider` — weighted random selection proportional to QoS score
 
-Install: `npm install /consumer-sdk`
+Install: `npm install @lodestar-dispatch/consumer-sdk`
 
 ### `indexer-agent`
 TypeScript daemon automating the provider lifecycle on-chain.
@@ -178,13 +178,13 @@ TypeScript daemon automating the provider lifecycle on-chain.
 - Calls `register`, `startService`, and `stopService` as needed
 - Graceful shutdown: stops all active registrations before exiting on SIGTERM/SIGINT
 
-Install: `npm install /indexer-agent`
+Install: `npm install @lodestar-dispatch/indexer-agent`
 
 ### `contracts/RPCDataService.sol`
 On-chain contract inheriting Horizon's `DataService` + `DataServiceFees` + `DataServicePausable`.
 
 Key functions:
-- `register` — validates provision (≥ 10,000 GRT, ≥ 14-day thawing), stores provider metadata and `paymentsDestination`
+- `register` — validates provision (≥ 555 GRT, ≥ 14-day thawing), stores provider metadata and `paymentsDestination`
 - `setPaymentsDestination` — decouple the GRT payment recipient from the operator signing key
 - `startService` — activates provider for a `(chainId, capabilityTier)` pair
 - `stopService` / `deregister` — lifecycle management
