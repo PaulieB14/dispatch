@@ -10,7 +10,7 @@
 /// in this request. The caller is responsible for passing all receipts (including
 /// those from previous rounds) to maintain the monotonic guarantee required
 /// by GraphTallyCollector.
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::{DefaultBodyLimit, State}, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 
 use alloy_primitives::{Address, Bytes};
@@ -19,7 +19,9 @@ use dispatch_tap::{collection_id, eip712_hash, recover_signer, sign_rav, Rav, Si
 use crate::{error::GatewayError, server::AppState};
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/rav/aggregate", post(aggregate_handler))
+    Router::new()
+        .route("/rav/aggregate", post(aggregate_handler))
+        .layer(DefaultBodyLimit::max(64 * 1024 * 1024)) // 64 MB — receipt batches can be large
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,10 +77,11 @@ async fn aggregate_handler(
         }
 
         // Verify the receipt was signed by the gateway itself.
+        // Note: receipts are signed by the gateway's signing key, not by the payer (consumer).
         let hash = eip712_hash(domain_sep, r);
         let recovered = recover_signer(hash, &signed.signature)
             .map_err(|e| GatewayError::InvalidRequest(format!("invalid receipt signature: {e}")))?;
-        if recovered != payer {
+        if recovered != state.signer_address {
             return Err(GatewayError::InvalidRequest(format!(
                 "receipt not signed by this gateway: signer={recovered}"
             )));

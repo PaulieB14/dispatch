@@ -20,7 +20,8 @@ Dispatch uses [GraphTally (TAP v2)](https://github.com/graphprotocol/graph-impro
                                → GraphTallyCollector (verifies EIP-712, tracks cumulative value)
                                → PaymentsEscrow (draws GRT from consumer's escrow)
                                → GraphPayments (distributes: protocol tax → delegators → provider)
-                               → GRT lands at paymentsDestination
+                               → 2% data-service cut retained by RPCDataService (1% burned, 1% as revenue)
+                               → remainder lands at paymentsDestination
 ```
 
 `valueAggregate` in a RAV is **cumulative and never resets**. Each `collect()` call computes the delta from the last collected value. This means a lost RAV doesn't lose funds — the next RAV covers the gap.
@@ -68,6 +69,19 @@ Receipt processing must not slow down requests. In practice:
 | ECDSA signature verification | ~0.1ms |
 | Receipt storage (async, not on critical path) | ~0ms |
 | **Total overhead** | **&lt;1ms** |
+
+---
+
+## Data service fee cut
+
+On each `collect()`, `RPCDataService` takes a **2% cut** from the fees routed through it:
+
+| Portion | PPM | Behaviour |
+|---|---|---|
+| `BURN_CUT_PPM` | 10,000 (1%) | Burned via `GRT.burn()` — deflationary |
+| `DATA_SERVICE_CUT_PPM` | 10,000 (1%) | Accumulated in the contract; owner withdraws via `withdrawFees()` |
+
+The remaining 98% flows to the provider's `paymentsDestination`.
 
 ---
 

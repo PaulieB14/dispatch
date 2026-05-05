@@ -101,6 +101,10 @@ pub struct TapConfig {
     /// Falls back to [collector].arbitrum_rpc_url when omitted.
     /// Set this (or [collector]) to enable on-chain escrow pre-checks.
     pub escrow_check_rpc_url: Option<String>,
+    /// Consumer addresses that bypass the escrow balance check.
+    /// Useful for self-consumption (e.g. own indexer using own dispatch service).
+    #[serde(default)]
+    pub bypass_consumers: Vec<Address>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

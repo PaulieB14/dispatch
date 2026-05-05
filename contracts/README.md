@@ -23,19 +23,25 @@ forge test --fork-url $ARBITRUM_SEPOLIA_RPC_URL -vvv
 
 ## Deployment
 
+The contract deploys as a **UUPS upgradeable proxy** (ERC1967). The script deploys the implementation then a proxy, calling `initialize()` atomically.
+
 ```bash
 cp .env.example .env
-# fill in PRIVATE_KEY, OWNER, PAUSE_GUARDIAN, GRT_TOKEN, GRAPH_CONTROLLER, GRAPH_TALLY_COLLECTOR
+# fill in PRIVATE_KEY, OWNER, PAUSE_GUARDIAN, GRAPH_CONTROLLER, GRAPH_TALLY_COLLECTOR
 
 # Arbitrum Sepolia (testnet)
 forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast --verify -vvvv
 ```
 
+The script logs both `RPC_DATA_SERVICE_ADDRESS` (proxy) and `RPC_DATA_SERVICE_IMPL` (implementation). Set `RPC_DATA_SERVICE_ADDRESS` in your `.env` — the proxy is the address all downstream services use.
+
 ## Key parameters
 
 | Parameter | Value | Adjustable |
 |---|---|---|
-| Default minimum provision | 25,000 GRT per chain | No (constant) |
+| Default minimum provision | 555 GRT | No (constant) |
+| Burn cut | 1% of fees (`BURN_CUT_PPM = 10_000`) | No (constant) |
+| Data service cut | 1% of fees (`DATA_SERVICE_CUT_PPM = 10_000`) | No (constant) |
 | Minimum thawing period floor | 14 days | No (constant lower bound) |
 | Minimum thawing period | 14 days initially | Yes — `setMinThawingPeriod()` (owner) |
 | Stake-to-fees ratio | 5 (5:1) | No |
@@ -60,6 +66,8 @@ forge script script/Deploy.s.sol --rpc-url arbitrum_sepolia --broadcast --verify
 | `setIssuancePerCU(rate)` | Set GRT issuance rate per compute unit (0 = disabled) |
 | `depositRewardsPool(amount)` | Deposit GRT into the rewards pool |
 | `withdrawRewardsPool(amount)` | Withdraw unused GRT from the rewards pool |
+| `withdrawFees(to, amount)` | Withdraw accumulated data-service revenue (the 1% `DATA_SERVICE_CUT_PPM` portion) |
+| `upgradeToAndCall(newImpl, data)` | Upgrade the proxy to a new implementation (UUPS) |
 
 ### Provider operations
 

@@ -20,7 +20,7 @@ operator_private_key = "0x..."
 
 [tap]
 # RPCDataService contract address.
-data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address      = "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9"
 
 # Ethereum addresses authorised to send TAP receipts to this service.
 # Derived from the gateway's signer_private_key. Leave empty to accept all.
@@ -82,7 +82,7 @@ region = "eu-west"   # optional — used for geographic routing bonus
 signer_private_key        = "0x..."
 
 # RPCDataService contract address.
-data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address      = "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9"
 
 # GRT wei per compute unit. Default ≈ $40/M requests at $0.09/GRT.
 base_price_per_cu         = 4000000000000
@@ -99,7 +99,7 @@ region_bonus        = 0.15  # score boost for providers in the same region
 
 [discovery]
 # The Graph subgraph URL for dynamic provider discovery.
-subgraph_url  = "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0"
+subgraph_url  = "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0"
 interval_secs = 60
 
 # Optional: static providers used at startup and as fallback.

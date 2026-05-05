@@ -1,0 +1,50 @@
+---
+title: Changelog
+description: Weekly updates to the Dispatch network and tooling
+---
+
+Weekly updates to the Dispatch network and tooling.
+
+## Week of April 27, 2026
+
+### New features
+
+- **Upgradeable `RPCDataService` contract.** The core registry contract is now UUPS-upgradeable, so future protocol improvements can ship without migrating providers to a new address. See [Contracts](https://dispatch.lodestar-dashboard.com/docs/src/contracts).
+- **Provider fee withdrawal.** A new `withdrawFees` flow lets the protocol owner withdraw the 1% retained fee accrued from provider activity, separating retained revenue from burned fees.
+
+### Updates
+
+- **555 GRT minimum provision for providers.** Registering as a provider now requires a 555 GRT provision, replacing the previous lower threshold. New providers should size their stake accordingly. See [Providers](https://dispatch.lodestar-dashboard.com/docs/src/providers).
+- **2% protocol fee on provider activity.** A 2% fee now applies — 1% is burned and 1% is retained by the protocol. See [Payments](https://dispatch.lodestar-dashboard.com/docs/src/payments).
+- **New deployed contract address.** `RPCDataService` is now live at `0x7101...ba0b9` on Arbitrum One. Update any clients, scripts, or integrations that pinned the previous address. See [Deployed addresses](https://dispatch.lodestar-dashboard.com/docs/src/deployed-addresses).
+- **Subgraph v0.3.0.** The Dispatch subgraph has been republished against the new contract with an updated start block. Re-point any queries or dashboards to the new subgraph version.
+
+### Bug fixes
+
+- **Documentation, examples, and the smoke client now reference the new contract address** so getting-started flows and CI checks work out of the box.
+
+## Week of April 20, 2026
+
+### New features
+
+- **Batch JSON-RPC support.** Dispatch now accepts standard JSON-RPC batch requests, letting you send multiple calls in a single HTTP round-trip for lower latency and fewer connections.
+- **`dispatch-proxy`: a drop-in local JSON-RPC server.** Run a local proxy that speaks plain JSON-RPC and transparently routes requests through the decentralised network. Point any existing wallet, library, or tool at `http://localhost:<port>` and use Dispatch without integrating an SDK. See the [Consumers guide](https://dispatch.lodestar-dashboard.com/docs/src/consumers).
+- **Auto-generated consumer keys for `dispatch-proxy`.** On first run, the proxy creates a consumer key and prints a direct dashboard funding link, so you can go from install to a funded escrow in a couple of clicks.
+- **On-chain escrow pre-check.** The proxy now verifies your GRT escrow balance before forwarding requests and returns clear `402 Payment Required` responses with funding hints when you're underfunded — no more silent failures. See [Payments](https://dispatch.lodestar-dashboard.com/docs/src/payments).
+- **Per-consumer credit limit.** A 0.1 GRT unconfirmed-spend cap is now enforced per consumer, protecting providers from freeloaders while still allowing trial usage.
+- **Method tracking in TAP receipts and a receipt feed API.** Receipts now record which RPC method was paid for, and a new feed endpoint lets providers and consumers stream their receipt history for accounting and analytics.
+- **Lightweight `/block/{chain_id}` probe endpoint.** The gateway uses this to health-check providers without consuming a TAP receipt, keeping discovery fast and free.
+- **Versioned Docker images.** Releases now publish tagged Docker images so you can pin to a specific Dispatch version in production deployments.
+
+### Updates
+
+- **`X-Consumer-Address` is now required on every gateway request.** All requests to the public gateway must include the `X-Consumer-Address` header identifying the consumer's Ethereum address. This enables per-consumer billing and rate-limiting, and replaces the previous unauthenticated free-query path. See the [Consumers guide](https://dispatch.lodestar-dashboard.com/docs/src/consumers).
+- **Gateway prefers static endpoint overrides.** When a configured static endpoint matches a discovered provider address, the gateway uses the override — making local and staging setups predictable.
+- **Service and gateway ports bind to localhost by default.** Default deployments no longer expose ports on all interfaces, reducing the chance of accidental public exposure.
+
+### Bug fixes
+
+- **Corrected EIP-712 domain name to `GraphTallyCollector`.** Receipt signatures now match the on-chain verifier; signatures generated against the previous (incorrect) domain are no longer needed.
+- **Fixed EIP-712 domain and verifying contract in example configs.** The shipped example configurations now sign and verify against the correct on-chain contract out of the box.
+- **Consumer SDK now appends `/rpc/{chainId}` to provider endpoints.** Direct SDK usage routes to the right path automatically; no manual URL construction required.
+- **Proxy returns clearer `402` funding hints** when the consumer's escrow is empty or below the active credit limit.

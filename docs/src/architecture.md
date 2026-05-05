@@ -14,7 +14,7 @@ Consumer (dApp)
    │  POST /rpc/{chain_id}
    │  TAP-Receipt: { signed EIP-712 receipt }
    ▼
-dispatch-service          ← JSON-RPC proxy, TAP receipt validation,
+dispatch-service          ← JSON-RPC proxy (single + batch), TAP receipt validation,
    │                         receipt persistence
    ▼
 Ethereum client           ← Geth / Erigon / Reth / Nethermind
@@ -67,8 +67,8 @@ demo/           Self-contained local demo: full payment loop on Anvil
 
 Dispatch is a data service in the Horizon framework. Three Horizon layers are in play:
 
-**HorizonStaking** — indexers call `provision(serviceProvider, RPCDataService, tokens, maxVerifierCut, thawingPeriod)`. Minimum 10,000 GRT, 14-day thawing period.
+**HorizonStaking** — indexers call `provision(serviceProvider, RPCDataService, tokens, maxVerifierCut, thawingPeriod)`. Minimum 555 GRT, 14-day thawing period.
 
 **GraphPayments + PaymentsEscrow** — consumers deposit GRT into escrow keyed by `(sender, serviceProvider)`. Every request carries a TAP receipt; the TAP agent batches these into RAVs redeemed via `collect()`.
 
-**DataService framework** — `RPCDataService` inherits `DataService` + `DataServiceFees` + `DataServicePausable`. The framework handles stake claim linked lists, fee locking at the configured ratio, and pause logic.
+**DataService framework** — `RPCDataService` inherits `DataService` + `DataServiceFees` + `DataServicePausableUpgradeable`. Deployed as a UUPS upgradeable proxy (ERC1967). The framework handles stake claim linked lists, fee locking at the configured ratio, and pause logic.

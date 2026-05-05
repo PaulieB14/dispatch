@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {Test, console2} from "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {RPCDataService} from "../src/RPCDataService.sol";
 import {IRPCDataService} from "../src/interfaces/IRPCDataService.sol";
@@ -90,7 +91,11 @@ contract RPCDataServiceTest is Test {
         staking = new MockHorizonStaking();
         controller = new MockController(address(staking));
 
-        service = new RPCDataService(owner, address(controller), address(0), pauseGuardian);
+        RPCDataService impl = new RPCDataService(address(controller), address(0));
+        service = RPCDataService(address(new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))
+        )));
 
         // Pre-populate staking mock with valid provision for `provider`.
         staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
@@ -170,7 +175,7 @@ contract RPCDataServiceTest is Test {
 
     function test_register_revertIfInsufficientProvision() public {
         address poorProvider = makeAddr("poorProvider");
-        staking.setProvision(poorProvider, address(service), SUFFICIENT_PROVISION - 1, SUFFICIENT_THAWING);
+        staking.setProvision(poorProvider, address(service), service.DEFAULT_MIN_PROVISION() - 1, SUFFICIENT_THAWING);
 
         vm.prank(poorProvider);
         vm.expectRevert(); // ProvisionManagerInvalidValue("tokens", ...)

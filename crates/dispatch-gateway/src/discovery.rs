@@ -67,9 +67,11 @@ pub async fn run(state: AppState) {
 
         match fetch_providers(&state.http_client, &cfg.subgraph_url).await {
             Ok(mut providers) if !providers.is_empty() => {
-                // If a static provider entry exists for the same address, keep its
-                // endpoint — the static config is intentionally an internal override
-                // (e.g. a Docker hostname) that the gateway operator controls.
+                // If a static provider entry exists for the same address:
+                //  - Override the endpoint (Docker internal hostname instead of public URL).
+                //  - Merge any chain capabilities declared in static config but absent from
+                //    the subgraph. This lets operators extend a provider's chain list before
+                //    the on-chain startService() call propagates to the subgraph.
                 for p in &mut providers {
                     if let Some(s) = state.config.providers.iter().find(|s| s.address == p.address) {
                         if s.endpoint != p.endpoint {
@@ -80,6 +82,33 @@ pub async fn run(state: AppState) {
                                 "using static endpoint override for provider"
                             );
                             p.endpoint = s.endpoint.clone();
+                        }
+
+                        // Derive static chain_capabilities (chains × capabilities when
+                        // per-chain map is absent, which is the usual gateway.toml format).
+                        let static_caps: std::collections::HashMap<u64, Vec<crate::config::CapabilityTier>> =
+                            if s.chain_capabilities.is_empty() {
+                                s.chains.iter().map(|&id| (id, s.capabilities.clone())).collect()
+                            } else {
+                                s.chain_capabilities.clone()
+                            };
+
+                        for (chain_id, tiers) in static_caps {
+                            let entry = p.chain_capabilities.entry(chain_id).or_default();
+                            for tier in tiers {
+                                if !entry.contains(&tier) {
+                                    tracing::debug!(
+                                        address = %p.address,
+                                        chain_id,
+                                        tier = ?tier,
+                                        "supplementing subgraph data with static chain capability"
+                                    );
+                                    entry.push(tier);
+                                }
+                            }
+                            if !p.chains.contains(&chain_id) {
+                                p.chains.push(chain_id);
+                            }
                         }
                     }
                 }

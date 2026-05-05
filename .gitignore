@@ -1,21 +1,28 @@
-/target
-config.toml
-docker/config.toml
-docker/gateway.toml
-docker/oracle.toml
-agent.config.json
-*.key
-*.env
-.env
-docs/book
-contracts/script/TestCollect.s.sol
+target
+node_modules
+.DS_Store
+.idea
+.vscode
+*.swp
+*.log
+*.tmp
+*.out
+*.iml
+*.bak
 
-# Build artifacts & dependencies
-node_modules/
+# Build artifacts
+build/
 dist/
-package-lock.json
-subgraph/build/
+
+# Environment
+.env
+.env.local
+
+# Subgraph build cache
+subgraph/build
 
 # Foundry broadcast artifacts
 contracts/broadcast/
-*.bak
+
+# Vercel deployment
+apps/dispatch-live/.vercel

@@ -36,7 +36,7 @@ Expected output:
 dispatch-smoke
   endpoint   : http://167.235.29.213:7700
   chain_id   : 42161
-  data_svc   : 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078
+  data_svc   : 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9
   signer     : 0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9
 
   [PASS] GET /health → 200 OK

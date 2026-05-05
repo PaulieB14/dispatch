@@ -18,6 +18,7 @@ use dispatch_tap::create_receipt;
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/rpc/:chain_id/:consumer_address", post(rpc_handler_with_consumer))
         .route("/rpc/:chain_id", post(rpc_handler))
         .route("/rpc", post(rpc_handler_unified))
 }
@@ -30,7 +31,25 @@ async fn rpc_handler(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Response, GatewayError> {
-    dispatch_rpc(state, chain_id, peer, headers, body).await
+    let consumer = extract_consumer_address(&headers)?;
+    dispatch_rpc(state, chain_id, peer, consumer, body).await
+}
+
+/// Route handler for POST /rpc/{chain_id}/{consumer_address}
+///
+/// Consumer address embedded in the URL path — for clients that cannot set
+/// custom HTTP headers (e.g. graph-node, Ethereum execution clients).
+/// The address must be a valid checksummed or lowercase Ethereum address.
+async fn rpc_handler_with_consumer(
+    State(state): State<AppState>,
+    Path((chain_id, consumer_str)): Path<(u64, String)>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> Result<Response, GatewayError> {
+    let consumer = consumer_str
+        .parse::<Address>()
+        .map_err(|_| GatewayError::InvalidConsumerAddress(consumer_str))?;
+    dispatch_rpc(state, chain_id, peer, consumer, body).await
 }
 
 /// Unified multi-chain endpoint — chain selected via the `X-Chain-Id` header.
@@ -46,20 +65,18 @@ async fn rpc_handler_unified(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
-    dispatch_rpc(state, chain_id, peer, headers, body).await
+    let consumer = extract_consumer_address(&headers)?;
+    dispatch_rpc(state, chain_id, peer, consumer, body).await
 }
 
-/// Shared dispatch logic. Extracts consumer address, applies rate limit,
-/// then handles single or batch JSON-RPC.
+/// Shared dispatch logic. Applies rate limit, then handles single or batch JSON-RPC.
 async fn dispatch_rpc(
     state: AppState,
     chain_id: u64,
     peer: SocketAddr,
-    headers: HeaderMap,
+    consumer: Address,
     body: Value,
 ) -> Result<Response, GatewayError> {
-    // --- Consumer address required ---
-    let consumer = extract_consumer_address(&headers)?;
 
     // --- Per-IP rate limiting ---
     if let Some(limiter) = &state.rate_limiter {
@@ -760,6 +777,35 @@ mod tests {
                 .parse::<Address>()
                 .unwrap()
         );
+    }
+
+    // --- consumer address from URL path (rpc_handler_with_consumer) ---
+
+    #[test]
+    fn path_consumer_address_valid_checksummed() {
+        let addr: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            .parse()
+            .expect("valid checksummed address");
+        assert_eq!(
+            addr,
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+                .parse::<Address>()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn path_consumer_address_valid_lowercase() {
+        let addr: Address = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+            .parse()
+            .expect("valid lowercase address");
+        assert_eq!(addr.to_string().to_lowercase(), "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+    }
+
+    #[test]
+    fn path_consumer_address_invalid_rejects() {
+        let result = "not-an-address".parse::<Address>();
+        assert!(result.is_err());
     }
 
     // --- verify_attestation ---

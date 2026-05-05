@@ -6,9 +6,9 @@
 
 | Contract | Network | Address |
 |---|---|---|
-| RPCDataService | Arbitrum One (42161) | `0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078` |
+| RPCDataService | Arbitrum One (42161) | `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` |
 
-Subgraph: `https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0`
+Subgraph: `https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0`
 
 ---
 

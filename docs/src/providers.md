@@ -8,7 +8,7 @@ This guide walks through everything needed to join the Dispatch network as a pro
 
 | Requirement | Details |
 |---|---|
-| **GRT** | ≥ 10,000 GRT on Arbitrum One for the provision |
+| **GRT** | ≥ 555 GRT on Arbitrum One for the provision |
 | **ETH on Arbitrum** | Small amount for gas (~0.005 ETH is plenty) |
 | **Ethereum node(s)** | Full or archive node for each chain you want to serve |
 | **Server** | Linux VPS with 2+ vCPUs, ≥ 4 GB RAM, SSD |
@@ -63,7 +63,7 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   --rpc-url https://arb1.arbitrum.io/rpc
 ```
 
-Replace `10000000000000000000000` with the amount in wei (1e18 per GRT). The minimum required by `RPCDataService` is **10,000 GRT** (`10000000000000000000000`).
+Replace the amount with your desired stake in wei (1e18 per GRT). The minimum required by `RPCDataService` is **555 GRT** (`555000000000000000000`).
 
 ### 2b. Create a provision
 
@@ -73,8 +73,8 @@ A provision locks a portion of your staked GRT specifically for `RPCDataService`
 cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "provision(address,address,uint256,uint32,uint64)" \
   $PROVIDER_ADDRESS \
-  0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
-  10000000000000000000000 \
+  0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
+  555000000000000000000 \
   1000000 \
   1209600 \
   --private-key $PROVIDER_KEY \
@@ -83,8 +83,8 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
 
 Arguments:
 - `serviceProvider` — your provider address
-- `dataService` — `0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078` (RPCDataService)
-- `tokens` — amount in wei, minimum `10000000000000000000000` (10,000 GRT)
+- `dataService` — `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` (RPCDataService)
+- `tokens` — amount in wei, minimum `555000000000000000000` (555 GRT)
 - `maxVerifierCut` — `1000000` (100% in PPM — the contract cannot slash, so this doesn't matter in practice)
 - `thawingPeriod` — `1209600` (14 days in seconds — the contract minimum)
 
@@ -95,7 +95,7 @@ If your provider key and operator key are different, authorise the operator:
 ```bash
 cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "setOperator(address,address,bool)" \
-  0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+  0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   $OPERATOR_ADDRESS \
   true \
   --private-key $PROVIDER_KEY \
@@ -103,7 +103,7 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
 ```
 
 Arguments:
-- `dataService` — `0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078` (RPCDataService)
+- `dataService` — `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` (RPCDataService)
 - `operator` — your operator address (derived from the hot key on your server)
 - `allowed` — `true`
 
@@ -115,11 +115,11 @@ Arguments:
 cast call 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "getProvision(address,address)(uint256,uint256,uint256,uint32,uint64,uint64,uint32,uint64,uint256,uint32)" \
   $PROVIDER_ADDRESS \
-  0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+  0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   --rpc-url https://arb1.arbitrum.io/rpc
 ```
 
-The first number is `tokens`. It should be ≥ `10000000000000000000000`.
+The first number is `tokens`. It should be ≥ `555000000000000000000` (555 GRT).
 
 ---
 
@@ -151,7 +151,7 @@ operator_private_key = "0xYOUR_OPERATOR_PRIVATE_KEY"
 
 [tap]
 # RPCDataService contract address — do not change this.
-data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address      = "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9"
 
 # Address(es) of gateway signers that are allowed to send you TAP receipts.
 # This is the Ethereum address derived from the gateway's signer_private_key.
@@ -192,9 +192,20 @@ collect_interval_secs = 3600   # collect GRT every hour
 
 **`operator_private_key`** — the hot key on this server. Its address must be authorised as an operator in HorizonStaking (step 2c). It signs TAP response attestations and broadcasts on-chain `collect()` transactions, so it needs a small amount of ETH on Arbitrum One for gas.
 
-**`authorized_senders`** — list of gateway signer addresses allowed to send TAP receipts to this service. A gateway's signer address is derived from the `signer_private_key` in its `gateway.toml`. If you're using the public gateway, add its signer address here. Leave empty during initial setup to accept all senders.
+**`authorized_senders`** — list of gateway signer addresses allowed to send TAP receipts to this service. If you're routing traffic through the public Dispatch gateway, add its signer address:
 
-**`aggregator_url`** — the internal URL of your `dispatch-gateway`. The service POSTs raw receipts here every 60 seconds; the gateway aggregates them into signed RAVs and returns them. If you're running your own gateway in Docker Compose, this is `http://dispatch-gateway:8080`.
+```toml
+authorized_senders = ["0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9"]
+```
+
+Leave empty (`[]`) during initial setup to accept receipts from any sender — tighten this once you've confirmed the payment loop is working.
+
+**`aggregator_url`** — the URL the service POSTs raw receipts to every 60 seconds for RAV aggregation. Two options:
+
+- **Using the public Dispatch gateway** (most providers): `aggregator_url = "https://gateway.lodestar-dashboard.com"`
+- **Running your own gateway** (Docker Compose): `aggregator_url = "http://dispatch-gateway:8080"`
+
+The gateway verifies that each receipt was signed by itself, aggregates them into a signed RAV, and returns it for on-chain collection.
 
 **`[collector]`** — when present, `dispatch-service` automatically calls `RPCDataService.collect()` on a timer, pulling GRT from the consumer's escrow to your `paymentsDestination`. If you omit this section, collection does not happen and receipts accumulate without being redeemed.
 
@@ -253,7 +264,7 @@ Create `agent.config.json`:
 ```json
 {
   "arbitrumRpcUrl": "https://arb1.arbitrum.io/rpc",
-  "rpcDataServiceAddress": "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
+  "rpcDataServiceAddress": "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9",
   "operatorPrivateKey": "0xYOUR_OPERATOR_PRIVATE_KEY",
   "providerAddress": "0xYOUR_PROVIDER_ADDRESS",
   "endpoint": "https://rpc.your-domain.com",
@@ -269,7 +280,7 @@ Create `agent.config.json`:
 Run it:
 
 ```bash
-AGENT_CONFIG=./agent.config.json npx tsx src/index.ts
+AGENT_CONFIG=./agent.config.json npx dispatch-indexer-agent
 ```
 
 The agent calls `register()`, `startService()` for each entry in `services`, and `stopService()` / `deregister()` on SIGTERM. It reconciles on-chain state against the config on every run — safe to run on a cron or as a persistent daemon.
@@ -288,7 +299,7 @@ The agent calls `register()`, `startService()` for each entry in `services`, and
 ### Verify registration
 
 ```bash
-cast call 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+cast call 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   "isRegistered(address)(bool)" \
   $PROVIDER_ADDRESS \
   --rpc-url https://arb1.arbitrum.io/rpc
@@ -297,7 +308,7 @@ cast call 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
 Should return `true`.
 
 ```bash
-cast call 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+cast call 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   "getChainRegistrations(address)" \
   $PROVIDER_ADDRESS \
   --rpc-url https://arb1.arbitrum.io/rpc
@@ -442,7 +453,7 @@ Chains are governance-controlled. New chains are added via `RPCDataService.addCh
 cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "addToProvision(address,address,uint256)" \
   $PROVIDER_ADDRESS \
-  0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+  0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   5000000000000000000000 \
   --private-key $PROVIDER_KEY \
   --rpc-url https://arb1.arbitrum.io/rpc
@@ -454,7 +465,7 @@ cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
 cast send 0x00669A4CF01450B64E8A2A20E9b1FCB71E61eF03 \
   "thaw(address,address,uint256)" \
   $PROVIDER_ADDRESS \
-  0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+  0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   10000000000000000000000 \
   --private-key $PROVIDER_KEY \
   --rpc-url https://arb1.arbitrum.io/rpc
@@ -465,7 +476,7 @@ After the 14-day thawing period, call `deprovision` to release the tokens back t
 **Update your payments destination** (without re-registering):
 
 ```bash
-cast send 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+cast send 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   "setPaymentsDestination(address)" \
   $NEW_WALLET \
   --private-key $OPERATOR_KEY \
@@ -477,7 +488,7 @@ cast send 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
 Send `stopService` via the indexer agent by removing the entry from `services` in `agent.config.json` and re-running. Or call directly:
 
 ```bash
-cast send 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
+cast send 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9 \
   "stopService(address,bytes)" \
   $PROVIDER_ADDRESS \
   $(cast abi-encode "f(uint64,uint8)" 42161 0) \
@@ -496,4 +507,4 @@ cast send 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078 \
 | GraphTallyCollector | `0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e` |
 | PaymentsEscrow | `0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E` |
 | GraphPayments | `0xb98a3D452E43e40C70F3c0B03C5c7B56A8B3b8CA` |
-| RPCDataService | `0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078` |
+| RPCDataService | `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` |

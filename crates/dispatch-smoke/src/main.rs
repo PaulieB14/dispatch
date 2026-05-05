@@ -4,14 +4,19 @@
 //! verifying the full consumer → provider → Chainstack flow.
 //!
 //! Usage:
-//!   cargo run --bin dispatch-smoke -- --endpoint https://rpc.cargopete.com --chain-id 42161
+//!   cargo run --bin dispatch-smoke -- \
+//!     --endpoint https://rpc.cargopete.com \
+//!     --chain-id 42161 \
+//!     --consumer-address 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 //!
-//! Environment variables (all optional — defaults target the live network):
-//!   DISPATCH_ENDPOINT          Provider base URL              (default: https://rpc.cargopete.com)
-//!   DISPATCH_CHAIN_ID          EIP-155 chain ID               (default: 42161)
-//!   DISPATCH_DATA_SERVICE      RPCDataService address         (default: live mainnet address)
-//!   DISPATCH_TALLY_COLLECTOR   GraphTallyCollector address    (default: live mainnet address)
-//!   DISPATCH_SIGNER_KEY        Hex private key for receipts   (default: random ephemeral key)
+//! Flags / environment variables (all optional — defaults target the live network):
+//!   --endpoint / DISPATCH_ENDPOINT              Provider or gateway URL  (default: https://rpc.cargopete.com)
+//!   --chain-id / DISPATCH_CHAIN_ID              EIP-155 chain ID        (default: 42161)
+//!   --data-service / DISPATCH_DATA_SERVICE      RPCDataService address  (default: live mainnet)
+//!   --tally-collector / DISPATCH_TALLY_COLLECTOR GraphTallyCollector    (default: live mainnet)
+//!   --signer-key / DISPATCH_SIGNER_KEY          Hex private key         (default: random ephemeral)
+//!   --provider-address / DISPATCH_PROVIDER_ADDRESS  Provider address    (default: zero)
+//!   --consumer-address / DISPATCH_CONSUMER_ADDRESS  Consumer address    (default: omitted)
 
 use alloy_primitives::{address, Address, Bytes};
 use anyhow::{Context, Result};
@@ -109,33 +114,67 @@ fn tests() -> Vec<Test> {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+/// Parse `--flag value` from argv, falling back to an env var, then a default.
+fn opt(flag: &str, env: &str, default: &str) -> String {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len().saturating_sub(1) {
+        if args[i] == flag {
+            return args[i + 1].clone();
+        }
+    }
+    std::env::var(env).unwrap_or_else(|_| default.to_string())
+}
+
+fn opt_maybe(flag: &str, env: &str) -> Option<String> {
+    let args: Vec<String> = std::env::args().collect();
+    for i in 0..args.len().saturating_sub(1) {
+        if args[i] == flag {
+            return Some(args[i + 1].clone());
+        }
+    }
+    std::env::var(env).ok()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let endpoint = std::env::var("DISPATCH_ENDPOINT").unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string());
-    let chain_id: u64 = std::env::var("DISPATCH_CHAIN_ID")
-        .ok()
-        .and_then(|s| s.parse().ok())
+    let endpoint = opt("--endpoint", "DISPATCH_ENDPOINT", DEFAULT_ENDPOINT);
+    let chain_id: u64 = opt("--chain-id", "DISPATCH_CHAIN_ID", "42161")
+        .parse()
         .unwrap_or(DEFAULT_CHAIN_ID);
 
-    let data_service: Address = std::env::var("DISPATCH_DATA_SERVICE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(DATA_SERVICE);
+    let data_service: Address = opt(
+        "--data-service",
+        "DISPATCH_DATA_SERVICE",
+        "A983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
+    )
+    .parse()
+    .unwrap_or(DATA_SERVICE);
 
-    let tally_collector: Address = std::env::var("DISPATCH_TALLY_COLLECTOR")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(TALLY_COLLECTOR);
+    let tally_collector: Address = opt(
+        "--tally-collector",
+        "DISPATCH_TALLY_COLLECTOR",
+        "8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e",
+    )
+    .parse()
+    .unwrap_or(TALLY_COLLECTOR);
+
+    let consumer_address: Option<Address> =
+        opt_maybe("--consumer-address", "DISPATCH_CONSUMER_ADDRESS")
+            .and_then(|s| s.parse().ok());
 
     // Use provided key or generate a fresh ephemeral one.
-    let signing_key = match std::env::var("DISPATCH_SIGNER_KEY") {
-        Ok(hex) => {
+    let signing_key = match opt_maybe("--signer-key", "DISPATCH_SIGNER_KEY") {
+        Some(hex) => {
             let bytes = hex::decode(hex.trim_start_matches("0x"))
-                .context("DISPATCH_SIGNER_KEY: invalid hex")?;
-            SigningKey::from_slice(&bytes).context("DISPATCH_SIGNER_KEY: invalid key")?
+                .context("--signer-key: invalid hex")?;
+            SigningKey::from_slice(&bytes).context("--signer-key: invalid key")?
         }
-        Err(_) => SigningKey::random(&mut OsRng),
+        None => SigningKey::random(&mut OsRng),
     };
+
+    let provider_addr: Address = opt_maybe("--provider-address", "DISPATCH_PROVIDER_ADDRESS")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(Address::ZERO);
 
     let signer_address = dispatch_tap::address_from_key(&signing_key);
     let domain_sep = dispatch_tap::domain_separator("GraphTallyCollector", EIP712_CHAIN_ID, tally_collector);
@@ -149,6 +188,9 @@ async fn main() -> Result<()> {
     println!("  chain_id   : {chain_id}");
     println!("  data_svc   : {data_service}");
     println!("  signer     : {signer_address}");
+    if let Some(ca) = consumer_address {
+        println!("  consumer   : {ca}");
+    }
     println!();
 
     // ── Health check ─────────────────────────────────────────────────────────
@@ -181,11 +223,10 @@ async fn main() -> Result<()> {
             &signing_key,
             domain_sep,
             data_service,
-            // service_provider: we don't know it here — zero address is fine for smoke testing;
-            // the provider validates that its own address matches, which it won't, so receipts
-            // will be rejected server-side. This is expected for an unpermissioned smoke test.
-            // To do a full validated test, set DISPATCH_PROVIDER_ADDRESS.
-            provider_address(),
+            // service_provider: defaults to zero if not specified — provider will reject the
+            // receipt signature; that's expected for connectivity testing.
+            // Pass --provider-address for a full validated smoke run.
+            provider_addr,
             receipt_value,
             Bytes::default(),
         )?;
@@ -200,12 +241,14 @@ async fn main() -> Result<()> {
         });
 
         let t0 = Instant::now();
-        let resp = client
+        let mut req = client
             .post(&url)
-            .header("TAP-Receipt", receipt_header)
-            .json(&body)
-            .send()
-            .await;
+            .header("TAP-Receipt", &receipt_header)
+            .json(&body);
+        if let Some(ca) = consumer_address {
+            req = req.header("X-Consumer-Address", ca.to_string());
+        }
+        let resp = req.send().await;
 
         let elapsed = t0.elapsed().as_millis();
 
@@ -257,7 +300,7 @@ async fn main() -> Result<()> {
         &signing_key,
         domain_sep,
         data_service,
-        provider_address(),
+        provider_addr,
         cu_for("eth_blockNumber") as u128 * BASE_PRICE_PER_CU,
         Bytes::default(),
     )?;
@@ -269,12 +312,14 @@ async fn main() -> Result<()> {
     ]);
 
     let t0 = Instant::now();
-    let batch_resp = client
+    let mut batch_req = client
         .post(&url)
-        .header("TAP-Receipt", batch_receipt_header)
-        .json(&batch_body)
-        .send()
-        .await;
+        .header("TAP-Receipt", &batch_receipt_header)
+        .json(&batch_body);
+    if let Some(ca) = consumer_address {
+        batch_req = batch_req.header("X-Consumer-Address", ca.to_string());
+    }
+    let batch_resp = batch_req.send().await;
     let elapsed = t0.elapsed().as_millis();
 
     match batch_resp {
@@ -311,11 +356,13 @@ async fn main() -> Result<()> {
 
     // Missing TAP-Receipt header → expect -32001 (MissingReceipt)
     let t0 = Instant::now();
-    let no_receipt_resp = client
+    let mut no_receipt_req = client
         .post(&url)
-        .json(&json!({ "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 201 }))
-        .send()
-        .await;
+        .json(&json!({ "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 201 }));
+    if let Some(ca) = consumer_address {
+        no_receipt_req = no_receipt_req.header("X-Consumer-Address", ca.to_string());
+    }
+    let no_receipt_resp = no_receipt_req.send().await;
     let elapsed = t0.elapsed().as_millis();
 
     match no_receipt_resp {
@@ -346,12 +393,14 @@ async fn main() -> Result<()> {
 
     // Malformed TAP-Receipt header → expect -32001 (InvalidReceipt)
     let t0 = Instant::now();
-    let bad_receipt_resp = client
+    let mut bad_receipt_req = client
         .post(&url)
         .header("TAP-Receipt", "not-a-valid-receipt")
-        .json(&json!({ "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 202 }))
-        .send()
-        .await;
+        .json(&json!({ "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 202 }));
+    if let Some(ca) = consumer_address {
+        bad_receipt_req = bad_receipt_req.header("X-Consumer-Address", ca.to_string());
+    }
+    let bad_receipt_resp = bad_receipt_req.send().await;
     let elapsed = t0.elapsed().as_millis();
 
     match bad_receipt_resp {
@@ -396,13 +445,6 @@ fn cu_for(method: &str) -> u32 {
         "eth_getLogs" => 20,
         _ => 10,
     }
-}
-
-fn provider_address() -> Address {
-    std::env::var("DISPATCH_PROVIDER_ADDRESS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(Address::ZERO)
 }
 
 fn truncate(s: &str, max: usize) -> String {

@@ -43,7 +43,8 @@
           "docs/src/contracts",
           "docs/src/configuration",
           "docs/src/deployed-addresses",
-          "docs/src/roadmap"
+          "docs/src/roadmap",
+          "docs/src/changelog"
         ]
       }
     ]

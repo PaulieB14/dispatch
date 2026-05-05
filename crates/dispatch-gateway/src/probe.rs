@@ -6,7 +6,7 @@
 
 use std::time::Instant;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 
 use crate::server::AppState;
@@ -52,7 +52,6 @@ async fn probe_all(state: &AppState) {
                 // Use the unauthenticated /block/{chain_id} endpoint — avoids
                 // needing a signed TAP receipt just to probe for block freshness.
                 let url = format!("{}/block/{}", provider.endpoint, chain_id);
-                let body = json!({});
 
                 let start = Instant::now();
 

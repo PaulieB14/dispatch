@@ -18,7 +18,7 @@ Inspired by the [Q3 2026 "Experimental JSON-RPC Data Service"](https://thegraph.
 | `RPCDataService` contract | ✅ Live on Arbitrum One |
 | Subgraph | ✅ Live on The Graph Studio |
 | npm packages | ✅ Published (`@lodestar-dispatch/consumer-sdk`, `@lodestar-dispatch/indexer-agent`) |
-| Active providers | ✅ **1** — `https://rpc.cargopete.com` (Arbitrum One, Standard + Archive) |
+| Active providers | ✅ **1** — `https://rpc.cargopete.com` / `https://gateway.lodestar-dashboard.com` (Arbitrum One + Base, Archive + Debug) |
 | Consumer-pays escrow | ✅ Enforced — `X-Consumer-Address` required; no free queries |
 | Receipt signing & validation | ✅ Working — every request carries a signed EIP-712 TAP receipt |
 | Receipt persistence | ✅ Working — stored in `tap_receipts` table in postgres |
@@ -33,8 +33,8 @@ The full payment loop is working end-to-end on the live provider. Requests gener
 ```
 dispatch-smoke
   endpoint   : https://rpc.cargopete.com
-  chain_id   : 42161
-  data_svc   : 0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078
+  chains     : 42161 (Arbitrum One), 8453 (Base)
+  data_svc   : 0x7101d5c1a5c89c3647f5118da118e56c023ba0b9
   signer     : 0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9
 
   [PASS] GET /health → 200 OK
@@ -47,7 +47,7 @@ dispatch-smoke
   5 passed, 0 failed
 ```
 
-To become a provider: stake ≥ 10,000 GRT on Arbitrum One, provision it to `RPCDataService`, run `dispatch-service` alongside your Ethereum node, and register via the indexer agent. Full guide: [Running a Provider](docs/src/providers.md).
+To become a provider: stake ≥ 555 GRT on Arbitrum One, provision it to `RPCDataService`, run `dispatch-service` alongside your Ethereum node, and register via the indexer agent. Full guide: [Running a Provider](docs/src/providers.md).
 
 ---
 
@@ -61,9 +61,12 @@ Consumer (dApp)
    │
    └── via dispatch-gateway (managed, centralised)
          QoS-scored selection, TAP receipt signing
-         Requires X-Consumer-Address header + funded escrow
+         Two ways to identify the consumer:
+           · X-Consumer-Address header (standard)
+           · /rpc/{chain_id}/{address} URL path (graph-node, header-less clients)
    │
-   │  POST /rpc/{chain_id}  (or X-Chain-Id header on /rpc)
+   │  POST /rpc/{chain_id}               (X-Consumer-Address header)
+   │  POST /rpc/{chain_id}/{consumer}    (address in URL — no header needed)
    │  TAP-Receipt: { signed EIP-712 receipt }
    ▼
 dispatch-service          ← JSON-RPC proxy, TAP receipt validation,
@@ -147,13 +150,15 @@ Key responsibilities:
 - Select top-k providers via weighted random sampling, dispatch concurrently, return first valid response
 - **JSON-RPC batch** — concurrent per-item dispatch, per-item error isolation
 - **WebSocket proxy** — bidirectional forwarding for real-time subscriptions
-- **Require `X-Consumer-Address` header** — encodes consumer address into receipt metadata so GRT is drawn from the consumer's own escrow; returns `402` if missing or invalid
+- **Consumer address identification** — two methods supported:
+  - `X-Consumer-Address` header (standard path); returns `402` if missing or invalid
+  - URL path: `POST /rpc/{chain_id}/{consumer_address}` — for clients that cannot set custom headers (graph-node, Ethereum execution clients, curl without header flags). The address is validated and encoded into the TAP receipt metadata identically to the header path.
 - Create and sign a fresh TAP receipt per request (EIP-712, random nonce, CU-weighted value, consumer address in metadata)
 - **Dynamic discovery** — polls the RPC network subgraph; rebuilds registry on each poll
 - **Per-IP rate limiting** — token-bucket via `governor` (configurable RPS + burst)
 - **Prometheus metrics** — `dispatch_requests_total`, `dispatch_request_duration_seconds`
 
-Routes: `POST /rpc/{chain_id}` · `GET /ws/{chain_id}` · `GET /health` · `GET /version` · `GET /providers/{chain_id}` · `GET /metrics`
+Routes: `POST /rpc/{chain_id}` · `POST /rpc/{chain_id}/{consumer_address}` · `GET /ws/{chain_id}` · `GET /health` · `GET /version` · `GET /providers/{chain_id}` · `GET /metrics`
 
 ### `consumer-sdk`
 TypeScript package for dApp developers who want to send requests through the Dispatch network without running a gateway.
@@ -164,7 +169,7 @@ Key features:
 - `discoverProviders` — subgraph GraphQL query returning active providers for a given chain and tier
 - `selectProvider` — weighted random selection proportional to QoS score
 
-Install: `npm install /consumer-sdk`
+Install: `npm install @lodestar-dispatch/consumer-sdk`
 
 ### `indexer-agent`
 TypeScript daemon automating the provider lifecycle on-chain.
@@ -173,13 +178,13 @@ TypeScript daemon automating the provider lifecycle on-chain.
 - Calls `register`, `startService`, and `stopService` as needed
 - Graceful shutdown: stops all active registrations before exiting on SIGTERM/SIGINT
 
-Install: `npm install /indexer-agent`
+Install: `npm install @lodestar-dispatch/indexer-agent`
 
 ### `contracts/RPCDataService.sol`
 On-chain contract inheriting Horizon's `DataService` + `DataServiceFees` + `DataServicePausable`.
 
 Key functions:
-- `register` — validates provision (≥ 10,000 GRT, ≥ 14-day thawing), stores provider metadata and `paymentsDestination`
+- `register` — validates provision (≥ 555 GRT, ≥ 14-day thawing), stores provider metadata and `paymentsDestination`
 - `setPaymentsDestination` — decouple the GRT payment recipient from the operator signing key
 - `startService` — activates provider for a `(chainId, capabilityTier)` pair
 - `stopService` / `deregister` — lifecycle management
@@ -218,9 +223,9 @@ All Horizon contracts live on **Arbitrum One** (chain ID 42161).
 | GraphPayments | `0xb98a3D452E43e40C70F3c0B03C5c7B56A8B3b8CA` |
 | PaymentsEscrow | `0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E` |
 | GraphTallyCollector | `0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e` |
-| RPCDataService | `0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078` |
+| RPCDataService | `0x7101d5c1a5c89c3647f5118da118e56c023ba0b9` |
 
-Subgraph: `https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0`
+Subgraph: `https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0`
 
 ---
 
@@ -346,16 +351,16 @@ Configuration via environment variables:
 npm install @lodestar-dispatch/consumer-sdk
 ```
 
-The live gateway is `https://gateway.lodestar-dashboard.com`. All requests require an `X-Consumer-Address` header and a funded GRT escrow — see [docs/consumers.md](docs/src/consumers.md).
+The live gateway is `https://gateway.lodestar-dashboard.com`. All requests require an `X-Consumer-Address` header for billing and rate-limiting. The gateway manages its own on-chain GRT escrow — gateway users do not need to deposit GRT themselves. See [docs/consumers.md](docs/src/consumers.md).
 
 ```typescript
 import { DISPATCHClient } from "@lodestar-dispatch/consumer-sdk";
 
 const client = new DISPATCHClient({
   chainId: 42161,   // Arbitrum One — only live chain currently
-  dataServiceAddress: "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
+  dataServiceAddress: "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9",
   graphTallyCollector: "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e",
-  subgraphUrl: "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0",
+  subgraphUrl: "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0",
   signerPrivateKey: process.env.CONSUMER_KEY as `0x${string}`,
   basePricePerCU: 4_000_000_000_000n,
 });
@@ -374,7 +379,7 @@ import { IndexerAgent } from "@lodestar-dispatch/indexer-agent";
 
 const agent = new IndexerAgent({
   arbitrumRpcUrl: "https://arb1.arbitrum.io/rpc",
-  rpcDataServiceAddress: "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
+  rpcDataServiceAddress: "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9",
   operatorPrivateKey: process.env.OPERATOR_KEY as `0x${string}`,
   providerAddress: "0x...",
   endpoint: "https://rpc.my-indexer.com",
@@ -405,7 +410,7 @@ service_provider_address = "0x..."
 operator_private_key      = "0x..."   # signs on-chain collect() transactions
 
 [tap]
-data_service_address      = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address      = "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9"
 authorized_senders        = ["0x..."]  # gateway signer address(es)
 eip712_domain_name        = "GraphTallyCollector"
 eip712_chain_id           = 42161
@@ -441,7 +446,7 @@ region = "eu-west"   # optional — used for geographic routing
 
 [tap]
 signer_private_key    = "0x..."
-data_service_address  = "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078"
+data_service_address  = "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9"
 base_price_per_cu     = 4000000000000   # ≈ $40/M requests at $0.09 GRT
 eip712_domain_name    = "GraphTallyCollector"
 eip712_chain_id       = 42161
@@ -453,7 +458,7 @@ concurrent_k        = 3       # dispatch to top-3, first response wins
 region_bonus        = 0.15    # score boost for same-region providers
 
 [discovery]
-subgraph_url  = "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0"
+subgraph_url  = "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0"
 interval_secs = 60
 
 [[providers]]
@@ -476,6 +481,69 @@ capabilities = ["standard"]   # or ["standard", "archive", "debug"]
 | Deployment | ✅ Complete | Contract on Arbitrum One, subgraph live, npm packages published, e2e tests passing |
 
 See [`ROADMAP.md`](ROADMAP.md) for full detail.
+
+---
+
+## Dogfooding: using Dispatch as graph-node's RPC source
+
+Lodestar operates both sides of the network simultaneously: as a **provider** (Chainstack archive nodes serving Arbitrum One and Base) and as a **consumer** (graph-node uses the dispatch gateway as its primary RPC source for those chains).
+
+This validates the full payment loop under real indexing load: graph-node fires thousands of `eth_getLogs`, `eth_call`, `trace_block` and archive calls daily — dispatch routes them to the Chainstack backends, receipts accumulate, RAVs aggregate every 60s, GRT settles hourly.
+
+**How it works:**
+
+graph-node cannot set custom HTTP headers, which is why the `POST /rpc/{chain_id}/{consumer_address}` route exists. The operator wallet address is embedded in the URL:
+
+```
+https://gateway.lodestar-dashboard.com/rpc/42161/0xB70781305939A39e74Aa918416Df1b893e1Bd904
+https://gateway.lodestar-dashboard.com/rpc/8453/0xB70781305939A39e74Aa918416Df1b893e1Bd904
+```
+
+**graph-node `config.toml`:**
+
+```toml
+[chains.arbitrum-one]
+shard = "primary"
+provider = [
+  { label = "dispatch-arb",
+    url   = "https://gateway.lodestar-dashboard.com/rpc/42161/0xB70781305939A39e74Aa918416Df1b893e1Bd904",
+    features = ["archive", "traces"] },
+  { label = "chainstack-arb",
+    url   = "https://arbitrum-mainnet.core.chainstack.com/YOUR_KEY",
+    features = ["archive", "traces"] }
+]
+
+[chains.base]
+shard = "primary"
+provider = [
+  { label = "dispatch-base",
+    url   = "https://gateway.lodestar-dashboard.com/rpc/8453/0xB70781305939A39e74Aa918416Df1b893e1Bd904",
+    features = ["archive", "traces"] },
+  { label = "chainstack-base",
+    url   = "https://base-mainnet.core.chainstack.com/YOUR_KEY",
+    features = ["archive", "traces"] }
+]
+```
+
+graph-node round-robins and retries automatically — dispatch goes first, Chainstack is the fallback. No proxy, no sidecar, no custom build.
+
+**Economics:** The operator wallet funds `PaymentsEscrow` as consumer. GRT flows out per request and back in hourly via `collect()`, minus ~2% protocol fees. Net cost of self-consumption is negligible; the value is production validation and automatic Chainstack failover.
+
+---
+
+## Economics
+
+Providers earn GRT per request via the GraphTally micropayment system. The base price is `4_000_000_000_000` GRT wei per compute unit (CU), with CU cost scaling by method complexity:
+
+| Method | CUs | Per-provider receipt | USD at $0.09/GRT |
+|---|---|---|---|
+| `eth_blockNumber` | 1 | 4e-6 GRT | ~$1.08/M calls |
+| `eth_call` | 10 | 40e-6 GRT | ~$10.80/M calls |
+| `eth_getLogs` | 20 | 80e-6 GRT | ~$21.60/M calls |
+
+The gateway dispatches to 3 providers concurrently — all three get paid. Fees settle hourly on-chain via `RPCDataService.collect()`. The contract takes a 2% data service cut (1% burned, 1% retained) on top of the standard Horizon protocol tax.
+
+For a full breakdown — fee distribution, stake locking, break-even analysis, and current live numbers — see [docs/economics.md](docs/economics.md).
 
 ---
 

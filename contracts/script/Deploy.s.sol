@@ -2,9 +2,13 @@
 pragma solidity ^0.8.27;
 
 import {Script, console2} from "forge-std/Script.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {RPCDataService} from "../src/RPCDataService.sol";
 
-/// @notice Deploy RPCDataService to a target network.
+/// @notice Deploy RPCDataService (UUPS upgradeable) to a target network.
+///
+/// Deploys the implementation contract and an ERC1967Proxy pointing to it,
+/// calling initialize() atomically via the proxy constructor.
 ///
 /// Usage (Arbitrum One mainnet):
 ///   forge script script/Deploy.s.sol \
@@ -59,8 +63,15 @@ contract Deploy is Script {
 
         vm.startBroadcast();
 
-        RPCDataService service = new RPCDataService(owner_, controller, graphTallyCollector, pauseGuardian);
-        console2.log("RPCDataService deployed at:", address(service));
+        // Deploy implementation (immutables set here, initializers disabled).
+        RPCDataService impl = new RPCDataService(controller, graphTallyCollector);
+        console2.log("RPCDataService implementation:", address(impl));
+
+        // Deploy proxy — initialize() is called atomically in the constructor.
+        bytes memory initData = abi.encodeCall(RPCDataService.initialize, (owner_, pauseGuardian));
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        RPCDataService service = RPCDataService(address(proxy));
+        console2.log("RPCDataService proxy deployed at:", address(service));
 
         for (uint256 i = 0; i < chains.length; i++) {
             service.addChain(chains[i].chainId, chains[i].minProvisionTokens);
@@ -69,9 +80,10 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
-        // Persist address for downstream scripts
+        // Persist addresses for downstream scripts
         console2.log("\nAdd to your .env:");
-        console2.log("RPC_DATA_SERVICE_ADDRESS=", vm.toString(address(service)));
+        console2.log("RPC_DATA_SERVICE_ADDRESS=", vm.toString(address(proxy)));
+        console2.log("RPC_DATA_SERVICE_IMPL=", vm.toString(address(impl)));
     }
 
     function _phase1Chains() internal pure returns (ChainInit[] memory chains) {

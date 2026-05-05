@@ -1,12 +1,16 @@
 # Using the Network
 
-Two ways to consume the Dispatch network: hit the gateway directly or use the consumer SDK (trustless, signs receipts locally). Both require GRT in your escrow — there are no free queries.
+Three ways to consume the Dispatch network: hit the gateway directly, run the local `dispatch-proxy`, or use the consumer SDK (trustless, signs receipts locally).
+
+**Who manages on-chain GRT?**
+- **Gateway** — the gateway is the on-chain payer. It maintains its own GRT escrow with each provider. You do not need to deposit GRT yourself; your `X-Consumer-Address` is used for per-consumer billing and rate-limiting only.
+- **dispatch-proxy / Consumer SDK** — you are the on-chain payer. You must deposit GRT into `PaymentsEscrow` before making requests (see [Funding the escrow](#funding-the-escrow)).
 
 ---
 
 ## Via the Gateway
 
-The gateway handles provider selection and TAP receipt signing. You must include your Ethereum address in every request via the `X-Consumer-Address` header — the gateway encodes it into the TAP receipt so GRT is drawn from **your** escrow on-chain, not the gateway's.
+The gateway handles provider selection and TAP receipt signing. You must include your Ethereum address in every request via the `X-Consumer-Address` header — it is used for per-consumer billing and rate-limiting. The gateway manages its own on-chain GRT flow; you do not need to fund an escrow account to use the gateway.
 
 **Live gateway:** `https://gateway.lodestar-dashboard.com`
 
@@ -43,7 +47,7 @@ const client = createPublicClient({
 const block = await client.getBlockNumber();
 ```
 
-Missing the `X-Consumer-Address` header returns `402 Payment Required`. Requests from addresses with no funded escrow are rejected by the provider. See [Funding the escrow](#funding-the-escrow) below.
+Missing the `X-Consumer-Address` header returns `402 Payment Required`.
 
 **Routes:**
 ```
@@ -100,7 +104,7 @@ Add to MetaMask  →  Settings → Networks → Add a network
 
 The proxy handles provider discovery, TAP receipt signing, QoS-scored provider selection, CORS, and JSON-RPC batch requests. On exit (Ctrl+C) it prints a session summary of total requests and GRT spent.
 
-Unlike the gateway, the proxy runs locally and signs receipts with your own key — you pay providers directly from your own escrow. See [Funding the escrow](#funding-the-escrow) below.
+Unlike the gateway, the proxy runs locally and signs receipts with your own key — you are the on-chain payer and pay providers directly from your own escrow. See [Funding the escrow](#funding-the-escrow) below.
 
 ---
 
@@ -117,9 +121,9 @@ import { DISPATCHClient } from "@lodestar-dispatch/consumer-sdk";
 
 const client = new DISPATCHClient({
   chainId: 42161,                                               // Arbitrum One (only live chain)
-  dataServiceAddress: "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",
+  dataServiceAddress: "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9",
   graphTallyCollector: "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e",
-  subgraphUrl: "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0",
+  subgraphUrl: "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0",
   signerPrivateKey: process.env.CONSUMER_KEY as `0x${string}`,
   basePricePerCU: 4_000_000_000_000n,  // GRT wei per compute unit
 });
@@ -142,7 +146,7 @@ import {
 
 // Discover active providers for a chain + tier
 const providers = await discoverProviders(
-  "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.2.0",
+  "https://api.studio.thegraph.com/query/1747796/rpc-network/v0.3.0",
   42161,  // chainId
   0,      // tier: 0 = Standard, 1 = Archive
 );
@@ -151,7 +155,7 @@ const provider = selectProvider(providers);
 
 // Build and sign a receipt
 const receipt = buildReceipt(
-  "0xA983b18B8291F0c317Ba4Fe0dc0f7cc9373AF078",  // dataService
+  "0x7101d5c1a5c89c3647f5118da118e56c023ba0b9",  // dataService
   provider.address,                                // serviceProvider
   4_000_000_000_000n,                             // value (GRT wei)
 );
@@ -166,7 +170,9 @@ const signed = await signReceipt(
 
 ## Funding the escrow
 
-Before GRT flows to providers you need to deposit into `PaymentsEscrow` on Arbitrum One. This is required regardless of which access method you use — the gateway, proxy, and consumer SDK all charge from your own escrow.
+> **Gateway users skip this section.** The gateway manages its own on-chain escrow. If you're calling `https://gateway.lodestar-dashboard.com` directly, you do not need to deposit GRT.
+
+If you're using **dispatch-proxy** or the **consumer SDK**, you are the on-chain payer and must deposit GRT into `PaymentsEscrow` on Arbitrum One before providers will serve your requests.
 
 ### Via the Lodestar dashboard (easiest)
 
