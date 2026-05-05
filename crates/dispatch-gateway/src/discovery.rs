@@ -94,15 +94,18 @@ pub async fn run(state: AppState) {
                             };
 
                         for (chain_id, tiers) in static_caps {
-                            // Only add if not already known from on-chain subgraph data.
-                            p.chain_capabilities.entry(chain_id).or_insert_with(|| {
-                                tracing::debug!(
-                                    address = %p.address,
-                                    chain_id,
-                                    "supplementing subgraph data with static chain capability"
-                                );
-                                tiers
-                            });
+                            let entry = p.chain_capabilities.entry(chain_id).or_default();
+                            for tier in tiers {
+                                if !entry.contains(&tier) {
+                                    tracing::debug!(
+                                        address = %p.address,
+                                        chain_id,
+                                        tier = ?tier,
+                                        "supplementing subgraph data with static chain capability"
+                                    );
+                                    entry.push(tier);
+                                }
+                            }
                             if !p.chains.contains(&chain_id) {
                                 p.chains.push(chain_id);
                             }
