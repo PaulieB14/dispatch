@@ -61,9 +61,12 @@ Consumer (dApp)
    │
    └── via dispatch-gateway (managed, centralised)
          QoS-scored selection, TAP receipt signing
-         Requires X-Consumer-Address header + funded escrow
+         Two ways to identify the consumer:
+           · X-Consumer-Address header (standard)
+           · /rpc/{chain_id}/{address} URL path (graph-node, header-less clients)
    │
-   │  POST /rpc/{chain_id}  (or X-Chain-Id header on /rpc)
+   │  POST /rpc/{chain_id}               (X-Consumer-Address header)
+   │  POST /rpc/{chain_id}/{consumer}    (address in URL — no header needed)
    │  TAP-Receipt: { signed EIP-712 receipt }
    ▼
 dispatch-service          ← JSON-RPC proxy, TAP receipt validation,
@@ -147,13 +150,15 @@ Key responsibilities:
 - Select top-k providers via weighted random sampling, dispatch concurrently, return first valid response
 - **JSON-RPC batch** — concurrent per-item dispatch, per-item error isolation
 - **WebSocket proxy** — bidirectional forwarding for real-time subscriptions
-- **Require `X-Consumer-Address` header** — encodes consumer address into receipt metadata so GRT is drawn from the consumer's own escrow; returns `402` if missing or invalid
+- **Consumer address identification** — two methods supported:
+  - `X-Consumer-Address` header (standard path); returns `402` if missing or invalid
+  - URL path: `POST /rpc/{chain_id}/{consumer_address}` — for clients that cannot set custom headers (graph-node, Ethereum execution clients, curl without header flags). The address is validated and encoded into the TAP receipt metadata identically to the header path.
 - Create and sign a fresh TAP receipt per request (EIP-712, random nonce, CU-weighted value, consumer address in metadata)
 - **Dynamic discovery** — polls the RPC network subgraph; rebuilds registry on each poll
 - **Per-IP rate limiting** — token-bucket via `governor` (configurable RPS + burst)
 - **Prometheus metrics** — `dispatch_requests_total`, `dispatch_request_duration_seconds`
 
-Routes: `POST /rpc/{chain_id}` · `GET /ws/{chain_id}` · `GET /health` · `GET /version` · `GET /providers/{chain_id}` · `GET /metrics`
+Routes: `POST /rpc/{chain_id}` · `POST /rpc/{chain_id}/{consumer_address}` · `GET /ws/{chain_id}` · `GET /health` · `GET /version` · `GET /providers/{chain_id}` · `GET /metrics`
 
 ### `consumer-sdk`
 TypeScript package for dApp developers who want to send requests through the Dispatch network without running a gateway.
@@ -476,6 +481,53 @@ capabilities = ["standard"]   # or ["standard", "archive", "debug"]
 | Deployment | ✅ Complete | Contract on Arbitrum One, subgraph live, npm packages published, e2e tests passing |
 
 See [`ROADMAP.md`](ROADMAP.md) for full detail.
+
+---
+
+## Dogfooding: using Dispatch as graph-node's RPC source
+
+Lodestar operates both sides of the network simultaneously: as a **provider** (Chainstack archive nodes serving Arbitrum One and Base) and as a **consumer** (graph-node uses the dispatch gateway as its primary RPC source for those chains).
+
+This validates the full payment loop under real indexing load: graph-node fires thousands of `eth_getLogs`, `eth_call`, `trace_block` and archive calls daily — dispatch routes them to the Chainstack backends, receipts accumulate, RAVs aggregate every 60s, GRT settles hourly.
+
+**How it works:**
+
+graph-node cannot set custom HTTP headers, which is why the `POST /rpc/{chain_id}/{consumer_address}` route exists. The operator wallet address is embedded in the URL:
+
+```
+https://gateway.lodestar-dashboard.com/rpc/42161/0xB70781305939A39e74Aa918416Df1b893e1Bd904
+https://gateway.lodestar-dashboard.com/rpc/8453/0xB70781305939A39e74Aa918416Df1b893e1Bd904
+```
+
+**graph-node `config.toml`:**
+
+```toml
+[chains.arbitrum-one]
+shard = "primary"
+provider = [
+  { label = "dispatch-arb",
+    url   = "https://gateway.lodestar-dashboard.com/rpc/42161/0xB70781305939A39e74Aa918416Df1b893e1Bd904",
+    features = ["archive", "traces"] },
+  { label = "chainstack-arb",
+    url   = "https://arbitrum-mainnet.core.chainstack.com/YOUR_KEY",
+    features = ["archive", "traces"] }
+]
+
+[chains.base]
+shard = "primary"
+provider = [
+  { label = "dispatch-base",
+    url   = "https://gateway.lodestar-dashboard.com/rpc/8453/0xB70781305939A39e74Aa918416Df1b893e1Bd904",
+    features = ["archive", "traces"] },
+  { label = "chainstack-base",
+    url   = "https://base-mainnet.core.chainstack.com/YOUR_KEY",
+    features = ["archive", "traces"] }
+]
+```
+
+graph-node round-robins and retries automatically — dispatch goes first, Chainstack is the fallback. No proxy, no sidecar, no custom build.
+
+**Economics:** The operator wallet funds `PaymentsEscrow` as consumer. GRT flows out per request and back in hourly via `collect()`, minus ~2% protocol fees. Net cost of self-consumption is negligible; the value is production validation and automatic Chainstack failover.
 
 ---
 
