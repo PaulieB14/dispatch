@@ -75,10 +75,11 @@ async fn aggregate_handler(
         }
 
         // Verify the receipt was signed by the gateway itself.
+        // Note: receipts are signed by the gateway's signing key, not by the payer (consumer).
         let hash = eip712_hash(domain_sep, r);
         let recovered = recover_signer(hash, &signed.signature)
             .map_err(|e| GatewayError::InvalidRequest(format!("invalid receipt signature: {e}")))?;
-        if recovered != payer {
+        if recovered != state.signer_address {
             return Err(GatewayError::InvalidRequest(format!(
                 "receipt not signed by this gateway: signer={recovered}"
             )));
