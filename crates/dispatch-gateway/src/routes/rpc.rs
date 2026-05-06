@@ -297,11 +297,13 @@ async fn process_request(
     let cu = cu_weight_for(&request.method);
     let receipt_value = cu as u128 * state.config.tap.base_price_per_cu;
 
-    // Encode consumer address (bytes 0-19) + method name (bytes 20+) in metadata.
-    // Providers extract bytes 0-19 for escrow routing; bytes 20+ are the method
-    // name for per-method analytics and the receipt feed API.
+    // Encode gateway payer address (bytes 0-19) + method name (bytes 20+) in metadata.
+    // Providers extract bytes 0-19 for escrow routing — this is always the gateway's
+    // operator wallet, which funds escrow for all providers. Consumers are tracked at
+    // the gateway level only; they are not exposed to providers on-chain.
+    // Bytes 20+ are the method name for per-method analytics and the receipt feed API.
     let mut meta_bytes = Vec::with_capacity(20 + request.method.len());
-    meta_bytes.extend_from_slice(consumer.as_slice());
+    meta_bytes.extend_from_slice(state.config.tap.gateway_payer_address.as_slice());
     meta_bytes.extend_from_slice(request.method.as_bytes());
     let consumer_metadata = Bytes::from(meta_bytes);
 

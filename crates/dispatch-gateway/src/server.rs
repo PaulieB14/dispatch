@@ -7,7 +7,7 @@ use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use k256::ecdsa::SigningKey;
 use tower_http::trace::TraceLayer;
 
-use crate::{config::Config, discovery, probe, registry::Registry, routes};
+use crate::{config::Config, discovery, probe, provisioner, registry::Registry, routes};
 
 pub type IpRateLimiter = DefaultKeyedRateLimiter<std::net::IpAddr>;
 
@@ -66,6 +66,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     tokio::spawn(probe::run(state.clone()));
     tokio::spawn(discovery::run(state.clone()));
+    tokio::spawn(provisioner::run(state.clone()));
 
     let app = routes::router(state.clone()).layer(TraceLayer::new_for_http());
 

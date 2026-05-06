@@ -47,6 +47,8 @@ pub struct Config {
     pub rate_limit: Option<RateLimitConfig>,
     /// Optional dispatch-service URL for proxying receipt feed queries.
     pub service: Option<ServiceConfig>,
+    /// Optional auto-provisioning: fund escrow for new providers automatically.
+    pub provisioning: Option<ProvisioningConfig>,
 }
 
 /// Connection details for the local dispatch-service instance.
@@ -73,6 +75,11 @@ pub struct GatewayConfig {
 pub struct TapConfig {
     /// Gateway operator private key (hex) — signs TAP receipts sent to providers.
     pub signer_private_key: String,
+    /// Gateway operator wallet address — used as the payer in all TAP receipts.
+    /// This wallet funds escrow for every provider the gateway routes to.
+    /// Consumers interact with the gateway and are billed at the gateway level;
+    /// individual providers only ever see this single payer address on-chain.
+    pub gateway_payer_address: Address,
     /// RPCDataService contract address.
     pub data_service_address: Address,
     /// GRT wei charged per compute unit. Default ≈ $40/M requests at $0.09 GRT.
@@ -149,6 +156,33 @@ pub struct RateLimitConfig {
     pub burst: u32,
 }
 
+/// Auto-provisioning: automatically fund escrow for newly discovered providers.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProvisioningConfig {
+    /// Arbitrum One RPC URL used to send on-chain transactions.
+    pub arbitrum_rpc_url: String,
+    /// Private key of the gateway payer wallet (hex). Used to sign approve/deposit txns.
+    pub gateway_payer_private_key: String,
+    /// GRT token contract address on Arbitrum One.
+    #[serde(default = "default_grt_token_address")]
+    pub grt_token_address: Address,
+    /// PaymentsEscrow contract address on Arbitrum One.
+    #[serde(default = "default_payments_escrow_address")]
+    pub escrow_address: Address,
+    /// TAP collector contract (GraphTallyCollector) — passed as `collector` to deposit().
+    #[serde(default = "default_tap_verifying_contract")]
+    pub collector_address: Address,
+    /// GRT wei to deposit per provider when their escrow is below the threshold.
+    #[serde(default = "default_deposit_per_provider", deserialize_with = "deserialize_u128")]
+    pub deposit_per_provider: u128,
+    /// GRT wei threshold — deposit when escrow balance falls below this.
+    #[serde(default = "default_min_escrow_threshold", deserialize_with = "deserialize_u128")]
+    pub min_escrow_threshold: u128,
+    /// How often to check and top-up provider escrow (seconds).
+    #[serde(default = "default_provision_interval_secs")]
+    pub interval_secs: u64,
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
         let path = std::env::var("DISPATCH_GATEWAY_CONFIG")
@@ -176,6 +210,15 @@ fn default_quorum_k() -> usize { 3 }
 fn default_discovery_interval_secs() -> u64 { 60 }
 fn default_rps() -> u32 { 100 }
 fn default_burst() -> u32 { 20 }
+fn default_grt_token_address() -> Address {
+    "0x9623063377AD1B27544C965cCd7342f7EA7e88C7".parse().unwrap()
+}
+fn default_payments_escrow_address() -> Address {
+    "0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E".parse().unwrap()
+}
+fn default_deposit_per_provider() -> u128 { 100_000_000_000_000_000_000 } // 100 GRT
+fn default_min_escrow_threshold() -> u128 { 10_000_000_000_000_000_000 }  // 10 GRT
+fn default_provision_interval_secs() -> u64 { 600 } // 10 minutes
 
 #[cfg(test)]
 mod tests {
