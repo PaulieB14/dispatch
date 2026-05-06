@@ -26,11 +26,13 @@ sol! {
 
     #[sol(rpc)]
     interface IPaymentsEscrow {
+        // Returns a single uint256 balance (PaymentsEscrow on Arbitrum One returns
+        // only the balance field; thaw timestamps are in a separate struct).
         function getBalance(
             address payer,
             address collector,
             address receiver
-        ) external view returns (uint256 balance, uint256 thawEndTimestamp, uint256 thawingTokens);
+        ) external view returns (uint256);
 
         function deposit(
             address collector,
@@ -128,7 +130,7 @@ async fn provision(
             .call()
             .await
         {
-            Ok(r) => r.balance,
+            Ok(r) => r._0,
             Err(e) => {
                 tracing::warn!(%receiver, error = %e, "failed to check escrow balance");
                 continue;
