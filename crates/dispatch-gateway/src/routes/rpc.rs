@@ -427,8 +427,10 @@ async fn dispatch_concurrent(
             let ms = start.elapsed().as_millis() as u64;
 
             if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
                 p.qos.record_failure();
-                return Err(format!("HTTP {}", resp.status()));
+                return Err(format!("HTTP {} body={}", status, body));
             }
 
             let att_header = resp
@@ -527,8 +529,10 @@ async fn dispatch_quorum(
             let ms = start.elapsed().as_millis() as u64;
 
             if !resp.status().is_success() {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
                 p.qos.record_failure();
-                return Err(format!("HTTP {}", resp.status()));
+                return Err(format!("HTTP {} body={}", status, body));
             }
 
             let att_header = resp
