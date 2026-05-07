@@ -61,6 +61,8 @@ async fn rpc_handler(
     // --- Escrow balance pre-check (cached 30 s) ---
     // Check the consumer's (payer's) escrow, not the gateway signer's.
     let bypass = state.config.tap.bypass_consumers.contains(&validated.payer);
+    // escrow_verified: true if on-chain balance confirmed > 0 (skips credit check below).
+    let mut escrow_verified = false;
     if bypass {
         tracing::debug!(payer = %validated.payer, "escrow check bypassed (bypass_consumers list)");
     } else if let Some(checker) = &state.escrow_checker {
@@ -72,7 +74,10 @@ async fn rpc_handler(
                 );
                 return Err(ServiceError::InsufficientEscrow);
             }
-            Ok(bal) => tracing::debug!(payer = %validated.payer, balance = bal, "escrow ok"),
+            Ok(bal) => {
+                tracing::debug!(payer = %validated.payer, balance = bal, "escrow ok");
+                escrow_verified = true; // On-chain escrow confirmed — skip credit gate.
+            }
             Err(e) => {
                 // Don't block the request if the check itself fails — log and continue.
                 tracing::warn!(error = %e, payer = %validated.payer, "escrow check failed, proceeding anyway");
@@ -80,9 +85,9 @@ async fn rpc_handler(
         }
     }
 
-    // --- Credit limit check (per consumer, not per gateway signer) ---
-    // Bypass consumers are exempt from the credit limit (they're trusted self-consumers).
-    if !bypass {
+    // --- Credit limit check (fallback when escrow is not configured or unverified) ---
+    // Skipped when on-chain escrow was verified above — the chain is the payment gate.
+    if !bypass && !escrow_verified {
         let credit = state.consumer_credit.read().unwrap();
         let served = credit.get(&validated.payer).copied().unwrap_or(0);
         if served >= state.config.tap.credit_threshold {
