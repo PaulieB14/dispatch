@@ -1,6 +1,7 @@
 services:
   # ── Indexer service (one per node) ────────────────────────────────────────
   dispatch-service:
+    image: ghcr.io/cargopete/dispatch-service:latest
     build:
       context: .
       target: service
@@ -18,6 +19,7 @@ services:
 
   # ── Gateway (routes requests to indexers) ─────────────────────────────────
   dispatch-gateway:
+    image: ghcr.io/cargopete/dispatch-gateway:latest
     build:
       context: .
       target: gateway
