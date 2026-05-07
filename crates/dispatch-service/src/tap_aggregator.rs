@@ -9,6 +9,9 @@
 //! The RAV's `value_aggregate` equals the sum of ALL receipts ever sent in each
 //! request — maintaining the monotonically-increasing invariant required by
 //! GraphTallyCollector for on-chain collection.
+//!
+//! After a successful upsert, receipts covered by the RAV (timestamp_ns ≤
+//! rav.timestamp_ns) are deleted to keep the table small.
 
 use std::{sync::Arc, time::Duration};
 
@@ -17,7 +20,7 @@ use alloy_primitives::Bytes;
 use crate::{
     config::Config,
     db::{
-        receipts::{distinct_payers, fetch_by_payer, upsert_rav, RavRow},
+        receipts::{delete_covered, distinct_payers, fetch_by_payer, upsert_rav, RavRow},
         Pool,
     },
 };
@@ -170,9 +173,12 @@ async fn aggregate_payer(
     )
     .await?;
 
+    let pruned = delete_covered(pool, &payer_hex_lower, rav.timestamp_ns as i64).await?;
+
     tracing::info!(
         payer = %payer_hex,
         receipts = rows.len(),
+        pruned,
         value_aggregate = %rav.value_aggregate,
         "RAV updated"
     );

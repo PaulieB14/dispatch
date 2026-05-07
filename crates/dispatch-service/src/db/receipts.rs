@@ -226,6 +226,23 @@ pub async fn mark_rav_redeemed(pool: &Pool, collection_id: &str) -> anyhow::Resu
     Ok(())
 }
 
+/// Delete receipts for `payer_hex` with `timestamp_ns <= up_to_ns`.
+///
+/// Called after a successful RAV upsert to prune receipts covered by the RAV.
+pub async fn delete_covered(
+    pool: &Pool,
+    payer_hex: &str,
+    up_to_ns: i64,
+) -> anyhow::Result<u64> {
+    let result =
+        sqlx::query("DELETE FROM tap_receipts WHERE payer_address = $1 AND timestamp_ns <= $2")
+            .bind(payer_hex)
+            .bind(up_to_ns)
+            .execute(pool)
+            .await?;
+    Ok(result.rows_affected())
+}
+
 /// Insert or update the RAV for a given collection_id.
 /// `value_aggregate` and `timestamp_ns` are always replaced with the latest values.
 pub async fn upsert_rav(pool: &Pool, rav: RavRow<'_>) -> anyhow::Result<()> {
