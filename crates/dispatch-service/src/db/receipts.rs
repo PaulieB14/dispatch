@@ -5,7 +5,11 @@ use crate::{db::Pool, tap::ValidatedReceipt};
 /// Persist a validated TAP receipt to PostgreSQL.
 ///
 /// Returns the auto-assigned row `id`.
-pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) -> anyhow::Result<i64> {
+pub async fn insert(
+    pool: &Pool,
+    chain_id: u64,
+    validated: &ValidatedReceipt,
+) -> anyhow::Result<i64> {
     let row = sqlx::query(
         r#"
         INSERT INTO tap_receipts
@@ -71,7 +75,11 @@ pub async fn recent(pool: &Pool, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> 
 }
 
 /// Fetch the most recent receipts for a specific consumer, newest first.
-pub async fn by_payer_recent(pool: &Pool, payer_hex: &str, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> {
+pub async fn by_payer_recent(
+    pool: &Pool,
+    payer_hex: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<ReceiptRow>> {
     let rows = sqlx::query(
         r#"
         SELECT id, payer_address, chain_id, timestamp_ns, value, method
@@ -109,7 +117,7 @@ pub struct RawReceipt {
     pub payer_address: String,
     pub timestamp_ns: i64,
     pub nonce: i64,
-    pub value: String,         // decimal u128
+    pub value: String, // decimal u128
     pub signature: String,
     pub metadata: Vec<u8>,
 }
@@ -216,6 +224,19 @@ pub async fn mark_rav_redeemed(pool: &Pool, collection_id: &str) -> anyhow::Resu
         .execute(pool)
         .await?;
     Ok(())
+}
+
+/// Delete receipts for `payer_hex` with `timestamp_ns <= up_to_ns`.
+///
+/// Called after a successful RAV upsert to prune receipts covered by the RAV.
+pub async fn delete_covered(pool: &Pool, payer_hex: &str, up_to_ns: i64) -> anyhow::Result<u64> {
+    let result =
+        sqlx::query("DELETE FROM tap_receipts WHERE payer_address = $1 AND timestamp_ns <= $2")
+            .bind(payer_hex)
+            .bind(up_to_ns)
+            .execute(pool)
+            .await?;
+    Ok(result.rows_affected())
 }
 
 /// Insert or update the RAV for a given collection_id.

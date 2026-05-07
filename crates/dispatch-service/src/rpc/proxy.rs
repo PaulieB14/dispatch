@@ -55,7 +55,7 @@ pub async fn forward_batch(
         )));
     }
 
-    resp.json::<Vec<JsonRpcResponse>>()
-        .await
-        .map_err(|e| ServiceError::BackendError(format!("failed to parse backend batch response: {e}")))
+    resp.json::<Vec<JsonRpcResponse>>().await.map_err(|e| {
+        ServiceError::BackendError(format!("failed to parse backend batch response: {e}"))
+    })
 }

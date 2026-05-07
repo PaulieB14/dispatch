@@ -9,14 +9,7 @@ use anyhow::Result;
 use k256::ecdsa::SigningKey;
 use tower_http::trace::TraceLayer;
 
-use crate::{
-    collector,
-    config::Config,
-    db,
-    escrow::EscrowChecker,
-    routes,
-    tap_aggregator,
-};
+use crate::{collector, config::Config, db, escrow::EscrowChecker, routes, tap_aggregator};
 
 /// Shared application state — cheaply cloneable, lives for the process lifetime.
 #[derive(Clone)]
@@ -68,11 +61,12 @@ pub async fn run(config: Config) -> Result<()> {
         .build()?;
 
     // Build the escrow checker if we have an Arbitrum RPC URL available.
-    let escrow_rpc_url = config
-        .tap
-        .escrow_check_rpc_url
-        .clone()
-        .or_else(|| config.collector.as_ref().map(|c| c.arbitrum_rpc_url.clone()));
+    let escrow_rpc_url = config.tap.escrow_check_rpc_url.clone().or_else(|| {
+        config
+            .collector
+            .as_ref()
+            .map(|c| c.arbitrum_rpc_url.clone())
+    });
 
     let escrow_checker = escrow_rpc_url.map(|rpc_url| {
         tracing::info!("escrow balance pre-check enabled");
@@ -94,7 +88,11 @@ pub async fn run(config: Config) -> Result<()> {
     // Start background tasks if a database is configured.
     if let Some(ref pool) = db_pool {
         tap_aggregator::spawn(Arc::new(config.clone()), pool.clone());
-        collector::spawn(Arc::new(config.clone()), pool.clone(), Arc::clone(&consumer_credit));
+        collector::spawn(
+            Arc::new(config.clone()),
+            pool.clone(),
+            Arc::clone(&consumer_credit),
+        );
     }
 
     let state = AppState {

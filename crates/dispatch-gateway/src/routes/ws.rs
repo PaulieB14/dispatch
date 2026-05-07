@@ -9,7 +9,10 @@
 use std::net::SocketAddr;
 
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, ConnectInfo, Path, State},
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        ConnectInfo, Path, State,
+    },
     response::IntoResponse,
     routing::get,
     Router,
@@ -118,21 +121,21 @@ async fn proxy(client: WebSocket, state: AppState, chain_id: u64, peer: SocketAd
 
 fn axum_to_tung(msg: Message) -> Option<TungMsg> {
     match msg {
-        Message::Text(t)   => Some(TungMsg::Text(t)),
+        Message::Text(t) => Some(TungMsg::Text(t)),
         Message::Binary(b) => Some(TungMsg::Binary(b)),
-        Message::Ping(b)   => Some(TungMsg::Ping(b)),
-        Message::Pong(b)   => Some(TungMsg::Pong(b)),
-        Message::Close(_)  => None,
+        Message::Ping(b) => Some(TungMsg::Ping(b)),
+        Message::Pong(b) => Some(TungMsg::Pong(b)),
+        Message::Close(_) => None,
     }
 }
 
 fn tung_to_axum(msg: TungMsg) -> Option<Message> {
     match msg {
-        TungMsg::Text(t)   => Some(Message::Text(t)),
+        TungMsg::Text(t) => Some(Message::Text(t)),
         TungMsg::Binary(b) => Some(Message::Binary(b)),
-        TungMsg::Ping(b)   => Some(Message::Ping(b)),
-        TungMsg::Pong(b)   => Some(Message::Pong(b)),
-        TungMsg::Close(_)  => None,
-        TungMsg::Frame(_)  => None,
+        TungMsg::Ping(b) => Some(Message::Ping(b)),
+        TungMsg::Pong(b) => Some(Message::Pong(b)),
+        TungMsg::Close(_) => None,
+        TungMsg::Frame(_) => None,
     }
 }

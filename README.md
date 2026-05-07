@@ -537,8 +537,8 @@ Providers earn GRT per request via the GraphTally micropayment system. The base 
 
 | Method | CUs | Per-provider receipt | USD at $0.09/GRT |
 |---|---|---|---|
-| `eth_blockNumber` | 1 | 4e-6 GRT | ~$1.08/M calls |
-| `eth_call` | 10 | 40e-6 GRT | ~$10.80/M calls |
+| `eth_getBlockByHash` / `eth_getBlockByNumber` | 5 | 20e-6 GRT | ~$5.40/M calls |
+| `eth_getBlockReceipts` / `eth_call` | 10 | 40e-6 GRT | ~$10.80/M calls |
 | `eth_getLogs` | 20 | 80e-6 GRT | ~$21.60/M calls |
 
 The gateway dispatches to 3 providers concurrently — all three get paid. Fees settle hourly on-chain via `RPCDataService.collect()`. The contract takes a 2% data service cut (1% burned, 1% retained) on top of the standard Horizon protocol tax.

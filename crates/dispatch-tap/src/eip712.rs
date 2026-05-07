@@ -49,7 +49,11 @@ pub fn eip712_hash_raw(domain_sep: B256, struct_hash: B256) -> B256 {
 /// `v` must be 27/28 (Ethereum) or the raw recovery id (0/1).
 pub fn recover_signer(hash: B256, sig_hex: &str) -> anyhow::Result<Address> {
     let bytes = hex::decode(sig_hex.trim_start_matches("0x"))?;
-    anyhow::ensure!(bytes.len() == 65, "signature must be 65 bytes, got {}", bytes.len());
+    anyhow::ensure!(
+        bytes.len() == 65,
+        "signature must be 65 bytes, got {}",
+        bytes.len()
+    );
     let v = bytes[64];
     // Accept both raw rec_id (0/1) and Ethereum-style v (27/28).
     let rec_id_byte = if v >= 27 { v - 27 } else { v };
@@ -102,7 +106,7 @@ mod tests {
         let dom = domain_separator("TAP", 31337, verifying_contract);
 
         let receipt = crate::types::Receipt {
-            data_service:     Address::from([0x01u8; 20]),
+            data_service: Address::from([0x01u8; 20]),
             service_provider: Address::from([0x02u8; 20]),
             timestamp_ns: 1_000_000_000,
             nonce: 42,
@@ -113,15 +117,16 @@ mod tests {
         let hash = eip712_hash(dom, &receipt);
 
         // Golden value verified by contracts/test/EIP712CrossLanguage.t.sol::test_solidity_hash_equals_golden
-        let expected: B256 =
-            "0x6a496be73e1ebc77612afedde0307b2099cc116600e590ce743771770f85d5ba"
-                .parse()
-                .unwrap();
+        let expected: B256 = "0x6a496be73e1ebc77612afedde0307b2099cc116600e590ce743771770f85d5ba"
+            .parse()
+            .unwrap();
         assert_eq!(hash, expected);
     }
 
     fn test_contract() -> Address {
-        "0x8f69F5C07477Ac46FBc491B1E6D91E2be0111A9e".parse().unwrap()
+        "0x8f69F5C07477Ac46FBc491B1E6D91E2be0111A9e"
+            .parse()
+            .unwrap()
     }
 
     #[test]

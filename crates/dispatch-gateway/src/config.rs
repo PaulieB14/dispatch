@@ -11,7 +11,10 @@ fn deserialize_u128<'de, D: Deserializer<'de>>(d: D) -> Result<u128, D::Error> {
     use serde::de::Error;
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum U128Helper { Int(i64), Str(String) }
+    enum U128Helper {
+        Int(i64),
+        Str(String),
+    }
     match U128Helper::deserialize(d)? {
         U128Helper::Int(v) => u128::try_from(v).map_err(D::Error::custom),
         U128Helper::Str(s) => s.parse::<u128>().map_err(D::Error::custom),
@@ -47,6 +50,8 @@ pub struct Config {
     pub rate_limit: Option<RateLimitConfig>,
     /// Optional dispatch-service URL for proxying receipt feed queries.
     pub service: Option<ServiceConfig>,
+    /// Optional auto-provisioning: fund escrow for new providers automatically.
+    pub provisioning: Option<ProvisioningConfig>,
 }
 
 /// Connection details for the local dispatch-service instance.
@@ -73,10 +78,18 @@ pub struct GatewayConfig {
 pub struct TapConfig {
     /// Gateway operator private key (hex) — signs TAP receipts sent to providers.
     pub signer_private_key: String,
+    /// Gateway operator wallet address — used as the payer in all TAP receipts.
+    /// This wallet funds escrow for every provider the gateway routes to.
+    /// Consumers interact with the gateway and are billed at the gateway level;
+    /// individual providers only ever see this single payer address on-chain.
+    pub gateway_payer_address: Address,
     /// RPCDataService contract address.
     pub data_service_address: Address,
     /// GRT wei charged per compute unit. Default ≈ $40/M requests at $0.09 GRT.
-    #[serde(default = "default_base_price_per_cu", deserialize_with = "deserialize_u128")]
+    #[serde(
+        default = "default_base_price_per_cu",
+        deserialize_with = "deserialize_u128"
+    )]
     pub base_price_per_cu: u128,
     /// EIP-712 domain name for GraphTallyCollector.
     pub eip712_domain_name: String,
@@ -149,10 +162,43 @@ pub struct RateLimitConfig {
     pub burst: u32,
 }
 
+/// Auto-provisioning: automatically fund escrow for newly discovered providers.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ProvisioningConfig {
+    /// Arbitrum One RPC URL used to send on-chain transactions.
+    pub arbitrum_rpc_url: String,
+    /// Private key of the gateway payer wallet (hex). Used to sign approve/deposit txns.
+    pub gateway_payer_private_key: String,
+    /// GRT token contract address on Arbitrum One.
+    #[serde(default = "default_grt_token_address")]
+    pub grt_token_address: Address,
+    /// PaymentsEscrow contract address on Arbitrum One.
+    #[serde(default = "default_payments_escrow_address")]
+    pub escrow_address: Address,
+    /// TAP collector contract (GraphTallyCollector) — passed as `collector` to deposit().
+    #[serde(default = "default_tap_verifying_contract")]
+    pub collector_address: Address,
+    /// GRT wei to deposit per provider when their escrow is below the threshold.
+    #[serde(
+        default = "default_deposit_per_provider",
+        deserialize_with = "deserialize_u128"
+    )]
+    pub deposit_per_provider: u128,
+    /// GRT wei threshold — deposit when escrow balance falls below this.
+    #[serde(
+        default = "default_min_escrow_threshold",
+        deserialize_with = "deserialize_u128"
+    )]
+    pub min_escrow_threshold: u128,
+    /// How often to check and top-up provider escrow (seconds).
+    #[serde(default = "default_provision_interval_secs")]
+    pub interval_secs: u64,
+}
+
 impl Config {
     pub fn load() -> Result<Self> {
-        let path = std::env::var("DISPATCH_GATEWAY_CONFIG")
-            .unwrap_or_else(|_| "gateway.toml".to_string());
+        let path =
+            std::env::var("DISPATCH_GATEWAY_CONFIG").unwrap_or_else(|_| "gateway.toml".to_string());
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read gateway config from {path}"))?;
         toml::from_str(&contents).context("failed to parse gateway config")
@@ -162,20 +208,63 @@ impl Config {
 fn default_capabilities() -> Vec<CapabilityTier> {
     vec![CapabilityTier::Standard]
 }
-fn default_region_bonus() -> f64 { 0.15 }
-fn default_host() -> String { "0.0.0.0".to_string() }
-fn default_port() -> u16 { 8080 }
-fn default_base_price_per_cu() -> u128 { 4_000_000_000_000 } // 4e-6 GRT/CU; see pricing_math test
-fn default_tap_chain_id() -> u64 { 42161 }
-fn default_tap_verifying_contract() -> Address {
-    "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e".parse().unwrap()
+fn default_region_bonus() -> f64 {
+    0.15
 }
-fn default_probe_interval_secs() -> u64 { 10 }
-fn default_concurrent_k() -> usize { 3 }
-fn default_quorum_k() -> usize { 3 }
-fn default_discovery_interval_secs() -> u64 { 60 }
-fn default_rps() -> u32 { 100 }
-fn default_burst() -> u32 { 20 }
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+fn default_port() -> u16 {
+    8080
+}
+fn default_base_price_per_cu() -> u128 {
+    4_000_000_000_000
+} // 4e-6 GRT/CU; see pricing_math test
+fn default_tap_chain_id() -> u64 {
+    42161
+}
+fn default_tap_verifying_contract() -> Address {
+    "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
+        .parse()
+        .unwrap()
+}
+fn default_probe_interval_secs() -> u64 {
+    10
+}
+fn default_concurrent_k() -> usize {
+    3
+}
+fn default_quorum_k() -> usize {
+    3
+}
+fn default_discovery_interval_secs() -> u64 {
+    60
+}
+fn default_rps() -> u32 {
+    100
+}
+fn default_burst() -> u32 {
+    20
+}
+fn default_grt_token_address() -> Address {
+    "0x9623063377AD1B27544C965cCd7342f7EA7e88C7"
+        .parse()
+        .unwrap()
+}
+fn default_payments_escrow_address() -> Address {
+    "0xf6Fcc27aAf1fcD8B254498c9794451d82afC673E"
+        .parse()
+        .unwrap()
+}
+fn default_deposit_per_provider() -> u128 {
+    100_000_000_000_000_000_000
+} // 100 GRT
+fn default_min_escrow_threshold() -> u128 {
+    10_000_000_000_000_000_000
+} // 10 GRT
+fn default_provision_interval_secs() -> u64 {
+    600
+} // 10 minutes
 
 #[cfg(test)]
 mod tests {
@@ -203,17 +292,23 @@ mod tests {
         assert_eq!(base * 1_000_000, 4_000_000_000_000_000_000_u128);
 
         // Per-method receipt values (GRT wei, single provider)
-        assert_eq!(1_u128  * base,  4_000_000_000_000_u128); // eth_blockNumber
-        assert_eq!(5_u128  * base, 20_000_000_000_000_u128); // eth_getBalance
+        assert_eq!(base, 4_000_000_000_000_u128); // eth_blockNumber
+        assert_eq!(5_u128 * base, 20_000_000_000_000_u128); // eth_getBalance
         assert_eq!(10_u128 * base, 40_000_000_000_000_u128); // eth_call
         assert_eq!(20_u128 * base, 80_000_000_000_000_u128); // eth_getLogs
 
         // USD cost per million calls (×3 concurrent, $0.09/GRT):
         // receipt_wei × 3 × 1e6 × $0.09 / 1e18
         let factor: f64 = 3.0 * 1_000_000.0 * 0.09 / 1e18;
-        let eth_call_usd_per_m     = 40_000_000_000_000_u128 as f64 * factor;
-        let eth_get_logs_usd_per_m = 80_000_000_000_000_u128 as f64 * factor;
-        assert!((eth_call_usd_per_m     - 10.80).abs() < 0.01, "eth_call: ${eth_call_usd_per_m:.2}/M");
-        assert!((eth_get_logs_usd_per_m - 21.60).abs() < 0.01, "eth_getLogs: ${eth_get_logs_usd_per_m:.2}/M");
+        let eth_call_usd_per_m = 40_000_000_000_000_f64 * factor;
+        let eth_get_logs_usd_per_m = 80_000_000_000_000_f64 * factor;
+        assert!(
+            (eth_call_usd_per_m - 10.80).abs() < 0.01,
+            "eth_call: ${eth_call_usd_per_m:.2}/M"
+        );
+        assert!(
+            (eth_get_logs_usd_per_m - 21.60).abs() < 0.01,
+            "eth_getLogs: ${eth_get_logs_usd_per_m:.2}/M"
+        );
     }
 }

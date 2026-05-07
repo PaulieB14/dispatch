@@ -29,10 +29,6 @@ pub enum GatewayError {
     #[error("rate limit exceeded")]
     RateLimited,
 
-    /// Consumer did not provide their Ethereum address.
-    #[error("missing X-Consumer-Address header — fund escrow and include your address with each request")]
-    ConsumerAddressRequired,
-
     /// Consumer provided a header value that isn't a valid Ethereum address.
     #[error("invalid X-Consumer-Address: {0}")]
     InvalidConsumerAddress(String),
@@ -44,27 +40,25 @@ pub enum GatewayError {
 impl IntoResponse for GatewayError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
-            GatewayError::InvalidRequest(_) => {
-                (StatusCode::BAD_REQUEST, -32600, self.to_string())
-            }
-            GatewayError::UnsupportedChain(_) => {
-                (StatusCode::NOT_FOUND, -32002, self.to_string())
-            }
-            GatewayError::RateLimited => {
-                (StatusCode::TOO_MANY_REQUESTS, -32005, self.to_string())
-            }
+            GatewayError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, -32600, self.to_string()),
+            GatewayError::UnsupportedChain(_) => (StatusCode::NOT_FOUND, -32002, self.to_string()),
+            GatewayError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, -32005, self.to_string()),
             GatewayError::NoProviders(_) | GatewayError::AllProvidersFailed(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, -32003, self.to_string())
             }
             GatewayError::ProviderError(_) | GatewayError::SigningError(_) => {
                 (StatusCode::BAD_GATEWAY, -32603, self.to_string())
             }
-            GatewayError::ConsumerAddressRequired | GatewayError::InvalidConsumerAddress(_) => {
+            GatewayError::InvalidConsumerAddress(_) => {
                 (StatusCode::PAYMENT_REQUIRED, -32004, self.to_string())
             }
             GatewayError::Internal(_) => {
                 tracing::error!(error = %self, "internal gateway error");
-                (StatusCode::INTERNAL_SERVER_ERROR, -32603, "internal error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    -32603,
+                    "internal error".to_string(),
+                )
             }
         };
 

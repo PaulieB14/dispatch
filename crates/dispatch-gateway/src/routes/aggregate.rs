@@ -10,11 +10,17 @@
 /// in this request. The caller is responsible for passing all receipts (including
 /// those from previous rounds) to maintain the monotonic guarantee required
 /// by GraphTallyCollector.
-use axum::{extract::{DefaultBodyLimit, State}, routing::post, Json, Router};
+use axum::{
+    extract::{DefaultBodyLimit, State},
+    routing::post,
+    Json, Router,
+};
 use serde::{Deserialize, Serialize};
 
 use alloy_primitives::{Address, Bytes};
-use dispatch_tap::{collection_id, eip712_hash, recover_signer, sign_rav, Rav, SignedRav, SignedReceipt};
+use dispatch_tap::{
+    collection_id, eip712_hash, recover_signer, sign_rav, Rav, SignedRav, SignedReceipt,
+};
 
 use crate::{error::GatewayError, server::AppState};
 
@@ -48,7 +54,9 @@ async fn aggregate_handler(
     Json(req): Json<AggregateRequest>,
 ) -> Result<Json<AggregateResponse>, GatewayError> {
     if req.receipts.is_empty() {
-        return Err(GatewayError::InvalidRequest("receipts batch is empty".into()));
+        return Err(GatewayError::InvalidRequest(
+            "receipts batch is empty".into(),
+        ));
     }
 
     let data_service = state.config.tap.data_service_address;

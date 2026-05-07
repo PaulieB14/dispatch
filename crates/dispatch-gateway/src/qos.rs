@@ -158,8 +158,12 @@ mod tests {
     fn fast_provider_scores_higher_latency() {
         let fast = ProviderQos::default();
         let slow = ProviderQos::default();
-        for _ in 0..10 { fast.record_success(20); }
-        for _ in 0..10 { slow.record_success(300); }
+        for _ in 0..10 {
+            fast.record_success(20);
+        }
+        for _ in 0..10 {
+            slow.record_success(300);
+        }
         assert!(fast.latency_score() > slow.latency_score());
     }
 }

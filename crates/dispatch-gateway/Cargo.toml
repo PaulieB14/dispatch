@@ -34,3 +34,6 @@ governor.workspace = true
 arc-swap.workspace = true
 hex.workspace = true
 rand.workspace = true
+
+# Ethereum provider + local signer for on-chain escrow provisioning
+alloy = { version = "0.5", features = ["provider-http", "signer-local", "contract"] }

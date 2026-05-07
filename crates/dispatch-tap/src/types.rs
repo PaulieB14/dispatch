@@ -23,7 +23,9 @@ pub fn payer_from_metadata(metadata: &Bytes) -> Option<Address> {
 /// metadata is 20 bytes or fewer, or if the bytes are not valid UTF-8.
 pub fn method_from_metadata(metadata: &Bytes) -> Option<String> {
     if metadata.len() > 20 {
-        std::str::from_utf8(&metadata[20..]).ok().map(|s| s.to_string())
+        std::str::from_utf8(&metadata[20..])
+            .ok()
+            .map(|s| s.to_string())
     } else {
         None
     }

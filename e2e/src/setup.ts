@@ -21,7 +21,8 @@ const ENV = Object.fromEntries(
 
 let anvil: ChildProcess;
 let service: ChildProcess;
-let sideService: ChildProcess; // low credit_threshold + escrow check, authorized_senders = []
+let sideService: ChildProcess;    // escrow check, authorized_senders = []
+let creditService: ChildProcess;  // no escrow check, low credit_threshold
 let gateway: ChildProcess;
 
 /** Run a command to completion, streaming output, resolving on exit 0. */
@@ -105,8 +106,8 @@ supported = [31337]
 "31337" = "http://127.0.0.1:8545"
 `;
 
-  // Side service: empty authorized_senders, low credit threshold, escrow check enabled.
-  // Used for testing escrow pre-check and credit limit independently of the main service.
+  // Side service: empty authorized_senders, escrow check enabled.
+  // Used for testing the escrow pre-check (accepts/rejects based on on-chain balance).
   const sideServiceCfg = `
 [server]
 host = "127.0.0.1"
@@ -125,6 +126,33 @@ eip712_verifying_contract = "${fixture.graphTallyCollector}"
 max_receipt_age_ns = 300000000000
 escrow_check_rpc_url = "http://127.0.0.1:8545"
 payments_escrow_address = "${fixture.paymentsEscrow}"
+
+[chains]
+supported = [31337]
+
+[chains.backends]
+"31337" = "http://127.0.0.1:8545"
+`;
+
+  // Credit service: no escrow check, low credit_threshold — tests in-memory credit gate.
+  // When escrow is verified on-chain the credit check is skipped; this service has no
+  // escrow checker so the credit limit is the only gate.
+  const creditServiceCfg = `
+[server]
+host = "127.0.0.1"
+port = 7702
+
+[indexer]
+service_provider_address = "${fixture.providerAddress}"
+operator_private_key = "${fixture.providerKey}"
+
+[tap]
+data_service_address = "${fixture.rpcDataService}"
+authorized_senders = []
+eip712_domain_name = "GraphTallyCollector"
+eip712_chain_id = 31337
+eip712_verifying_contract = "${fixture.graphTallyCollector}"
+max_receipt_age_ns = 300000000000
 credit_threshold = 8000000000000
 
 [chains]
@@ -146,6 +174,7 @@ base_price_per_cu = 4000000000000
 eip712_domain_name = "GraphTallyCollector"
 eip712_chain_id = 31337
 eip712_verifying_contract = "${fixture.graphTallyCollector}"
+gateway_payer_address = "${fixture.gatewayAddress}"
 
 [qos]
 probe_interval_secs = 3600
@@ -159,9 +188,10 @@ chains = [31337]
 capabilities = ["standard"]
 `;
 
-  fs.writeFileSync(path.join(TMP, "service.toml"),      serviceCfg.trim());
-  fs.writeFileSync(path.join(TMP, "side-service.toml"), sideServiceCfg.trim());
-  fs.writeFileSync(path.join(TMP, "gateway.toml"),      gatewayCfg.trim());
+  fs.writeFileSync(path.join(TMP, "service.toml"),        serviceCfg.trim());
+  fs.writeFileSync(path.join(TMP, "side-service.toml"),   sideServiceCfg.trim());
+  fs.writeFileSync(path.join(TMP, "credit-service.toml"), creditServiceCfg.trim());
+  fs.writeFileSync(path.join(TMP, "gateway.toml"),        gatewayCfg.trim());
 
   // 5. Build Rust binaries
   await run(CARGO, ["build", "--bins"], { cwd: ROOT });
@@ -181,7 +211,7 @@ capabilities = ["standard"]
   );
   await waitForPort(7700);
 
-  // 6b. Start side service (port 7701) — for escrow + credit limit tests
+  // 6b. Start side service (port 7701) — for escrow pre-check tests
   sideService = spawnProcess(
     path.join(ROOT, "target/debug/dispatch-service"),
     [],
@@ -195,6 +225,21 @@ capabilities = ["standard"]
     }
   );
   await waitForPort(7701);
+
+  // 6c. Start credit service (port 7702) — no escrow check, low credit_threshold
+  creditService = spawnProcess(
+    path.join(ROOT, "target/debug/dispatch-service"),
+    [],
+    {
+      cwd: ROOT,
+      env: {
+        ...ENV,
+        DISPATCH_CONFIG: path.join(TMP, "credit-service.toml"),
+        RUST_LOG: "info",
+      },
+    }
+  );
+  await waitForPort(7702);
 
   // 7. Start dispatch-gateway
   gateway = spawnProcess(
@@ -213,8 +258,9 @@ capabilities = ["standard"]
 }
 
 export async function teardown() {
-  if (gateway)     await killProcess(gateway);
-  if (sideService) await killProcess(sideService);
-  if (service)     await killProcess(service);
-  if (anvil)       await killProcess(anvil);
+  if (gateway)       await killProcess(gateway);
+  if (creditService) await killProcess(creditService);
+  if (sideService)   await killProcess(sideService);
+  if (service)       await killProcess(service);
+  if (anvil)         await killProcess(anvil);
 }

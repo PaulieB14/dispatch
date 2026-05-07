@@ -1269,6 +1269,7 @@ dependencies = [
 name = "dispatch-gateway"
 version = "0.1.0"
 dependencies = [
+ "alloy",
  "alloy-primitives",
  "anyhow",
  "arc-swap",

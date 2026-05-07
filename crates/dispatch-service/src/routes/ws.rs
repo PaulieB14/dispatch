@@ -93,21 +93,21 @@ async fn proxy(client: WebSocket, backend_url: String, chain_id: u64) {
 
 fn axum_to_tung(msg: Message) -> Option<TungMsg> {
     match msg {
-        Message::Text(t)   => Some(TungMsg::Text(t)),
+        Message::Text(t) => Some(TungMsg::Text(t)),
         Message::Binary(b) => Some(TungMsg::Binary(b)),
-        Message::Ping(b)   => Some(TungMsg::Ping(b)),
-        Message::Pong(b)   => Some(TungMsg::Pong(b)),
-        Message::Close(_)  => None,
+        Message::Ping(b) => Some(TungMsg::Ping(b)),
+        Message::Pong(b) => Some(TungMsg::Pong(b)),
+        Message::Close(_) => None,
     }
 }
 
 fn tung_to_axum(msg: TungMsg) -> Option<Message> {
     match msg {
-        TungMsg::Text(t)   => Some(Message::Text(t)),
+        TungMsg::Text(t) => Some(Message::Text(t)),
         TungMsg::Binary(b) => Some(Message::Binary(b)),
-        TungMsg::Ping(b)   => Some(Message::Ping(b)),
-        TungMsg::Pong(b)   => Some(Message::Pong(b)),
-        TungMsg::Close(_)  => None,
-        TungMsg::Frame(_)  => None,
+        TungMsg::Ping(b) => Some(Message::Ping(b)),
+        TungMsg::Pong(b) => Some(Message::Pong(b)),
+        TungMsg::Close(_) => None,
+        TungMsg::Frame(_) => None,
     }
 }

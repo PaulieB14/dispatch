@@ -5,8 +5,8 @@ pub mod receipts;
 pub mod rpc;
 pub mod ws;
 
-use axum::Router;
 use crate::server::AppState;
+use axum::Router;
 
 pub fn router(state: AppState) -> Router {
     Router::new()

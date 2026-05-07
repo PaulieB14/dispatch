@@ -30,16 +30,18 @@ Fully pay-per-request via **GraphTally (TAP v2)** micropayments. No epoch, no al
 
 The gateway charges per **compute unit (CU)**, where one CU = `4_000_000_000_000` GRT wei = `4e-6 GRT`.
 
-Method complexity sets the CU cost:
+Method complexity sets the CU cost. Values below are confirmed from live receipt data:
 
-| RPC Method | CUs | Per-provider receipt | Consumer pays (×3 concurrent) |
-|---|---|---|---|
-| `eth_blockNumber` | 1 | 4e-6 GRT | 12e-6 GRT |
-| `eth_getBalance` | 5 | 20e-6 GRT | 60e-6 GRT |
-| `eth_call` | 10 | 40e-6 GRT | 120e-6 GRT |
-| `eth_getLogs` | 20 | 80e-6 GRT | 240e-6 GRT |
+| RPC Method | CUs | Per-provider receipt |
+|---|---|---|
+| `eth_chainId` | 1 | 4e-6 GRT |
+| `eth_getBlockByHash` | 5 | 20e-6 GRT |
+| `eth_getBlockByNumber` | 5 | 20e-6 GRT |
+| `eth_getBlockReceipts` | 10 | 40e-6 GRT |
+| `eth_call` | 10 | 40e-6 GRT |
+| `eth_getLogs` | 20 | 80e-6 GRT |
 
-**Why ×3?** The gateway dispatches to 3 providers concurrently ("first response wins" QoS model) and all three receive a signed receipt — that is the cost of censorship-resistance and latency optimisation. The consumer pays all three.
+**Concurrent dispatch multiplier:** The gateway is configured to dispatch to up to `concurrent_k = 3` providers simultaneously (first response wins), and all providers that respond receive a signed receipt — that is the cost of censorship-resistance and latency optimisation. With the network currently at 1 active provider, the effective multiplier is ×1. Once multiple providers are live, consumers pay the per-provider receipt value × k for each request.
 
 ### USD cost at different GRT prices
 
@@ -121,33 +123,71 @@ The immediate value for early providers is not query-fee income but:
 
 ---
 
-## Break-even Analysis
+## Infrastructure Cost Scenarios
 
-**For query fees to cover a $200/month Chainstack node at $0.09/GRT:**
+Provider economics vary significantly depending on how the backend RPC node is sourced. Three realistic setups:
 
-```
-$200 ÷ ($10.80/M calls) ≈ 18.5M eth_call equivalents/month
-```
+### Scenario A — Chainstack Growth ($49/month)
 
-Or at current $0.0246/GRT:
+Chainstack's Growth plan gives archive access across all major chains for a flat $49/month. No per-call pricing within the plan limits. This is the lowest-friction starting point.
 
-```
-$200 ÷ ($2.95/M calls) ≈ 67.8M eth_call equivalents/month
-```
+| Item | Value |
+|---|---|
+| Monthly node cost | ~$49 |
+| Break-even at $0.09/GRT | ~4.5M eth_call equivalents/month (~150K/day) |
+| Break-even at $0.0246/GRT | ~16.6M eth_call equivalents/month (~550K/day) |
 
-That is ~2.3M calls/day — achievable at scale, but not from a single self-consumption loop.
+550K calls/day is achievable from a moderate consumer base or a handful of indexers dogfooding the network. This is the most realistic near-term entry point for a new provider.
 
-**GRT price sensitivity:**
+### Scenario B — Chainstack Business / dedicated ($200/month)
 
-| GRT price | Revenue per 10M eth_calls | Node cost covered |
-|---|---|---|
-| $0.0246 | ~$8.50 | 4.3% |
-| $0.05 | ~$17.30 | 8.7% |
-| $0.09 | ~$31.10 | 15.6% |
-| $0.20 | ~$69.10 | 34.6% |
-| $0.50 | ~$172.80 | 86.4% |
+Higher plan or a dedicated node add-on. Suitable if you're serving high volumes and hitting Growth plan rate limits, or need guaranteed throughput SLAs.
 
-The economics improve dramatically with GRT price — query fees are denominated in GRT, so each dollar of GRT appreciation directly increases USD revenue per request.
+| Item | Value |
+|---|---|
+| Monthly node cost | ~$200 |
+| Break-even at $0.09/GRT | ~18.5M eth_call equivalents/month (~620K/day) |
+| Break-even at $0.0246/GRT | ~67.8M eth_call equivalents/month (~2.3M/day) |
+
+2.3M calls/day is substantial — this tier only makes sense once external consumer traffic is well established.
+
+### Scenario C — Self-hosted archive node (~$130/month)
+
+Running your own Erigon / Reth / Nethermind instance on dedicated hardware. Typical hardware cost is €117–150/month (e.g. Hetzner AX102: Ryzen 9 7950X3D, 128 GB DDR5, 2×1.92 TB NVMe). No per-call costs once running.
+
+| Item | Value |
+|---|---|
+| Monthly node cost | ~$130 (hardware only, at 1 EUR = 1.10 USD) |
+| Marginal cost per request | $0 |
+| Break-even at $0.09/GRT | ~12M eth_call equivalents/month (~400K/day) |
+| Break-even at $0.0246/GRT | ~44M eth_call equivalents/month (~1.5M/day) |
+
+**The key upside:** beyond break-even, every additional request is pure margin — no per-call cost eating into revenue. At high volume this is significantly more profitable than a managed provider. The catch is operational overhead (syncing, disk management, upgrades) and the disk footprint: Arbitrum One alone is ~3.3 TB and growing at ~100 GB/month.
+
+If you are already running an archive node as a Graph Protocol subgraph indexer, **the marginal cost of joining Dispatch as a provider is essentially zero** — the node is already running and paid for by subgraph indexing revenue. In that case the break-even is the cost of the small Dispatch VM (~€5–10/month on Hetzner Cloud) plus the operator time to deploy, and any Dispatch query fees are nearly pure profit.
+
+---
+
+## Break-even Summary
+
+| Setup | Monthly cost | Break-even calls/day at $0.09 GRT | Break-even calls/day at $0.0246 GRT |
+|---|---|---|---|
+| Chainstack Growth | $49 | ~150K | ~550K |
+| Chainstack Business | $200 | ~620K | ~2.3M |
+| Self-hosted (standalone) | ~$130 | ~400K | ~1.5M |
+| Self-hosted (already running) | ~$10 | ~30K | ~110K |
+
+**GRT price sensitivity** (10M eth_call equivalents/month):
+
+| GRT price | Revenue | Covers $49 node | Covers $130 node | Covers $200 node |
+|---|---|---|---|---|
+| $0.0246 | ~$8.50 | 17% | 6.5% | 4.3% |
+| $0.05 | ~$17.30 | 35% | 13% | 8.7% |
+| $0.09 | ~$31.10 | 63% | 24% | 15.6% |
+| $0.20 | ~$69.10 | 141% ✓ | 53% | 34.6% |
+| $0.50 | ~$172.80 | ✓ | ✓ | 86% |
+
+Query fees are denominated in GRT, so each dollar of GRT appreciation directly multiplies USD revenue per request. The Chainstack Growth tier becomes profitable on 10M/month at ~$0.15 GRT; self-hosted at ~$0.20 GRT; Business tier at ~$0.65 GRT.
 
 ---
 

@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use alloy_primitives::{Address, B256, Bytes};
+use alloy_primitives::{Address, Bytes, B256};
 use k256::ecdsa::SigningKey;
 use rand::Rng;
 use thiserror::Error;
@@ -80,8 +80,24 @@ mod tests {
         let key = test_key();
         let dom = domain_separator("TAP", 42161, Address::ZERO);
 
-        let r1 = create_receipt(&key, dom, Address::ZERO, Address::ZERO, 100, Bytes::default()).unwrap();
-        let r2 = create_receipt(&key, dom, Address::ZERO, Address::ZERO, 100, Bytes::default()).unwrap();
+        let r1 = create_receipt(
+            &key,
+            dom,
+            Address::ZERO,
+            Address::ZERO,
+            100,
+            Bytes::default(),
+        )
+        .unwrap();
+        let r2 = create_receipt(
+            &key,
+            dom,
+            Address::ZERO,
+            Address::ZERO,
+            100,
+            Bytes::default(),
+        )
+        .unwrap();
 
         // Nonces must differ (random)
         assert_ne!(r1.receipt.nonce, r2.receipt.nonce);
@@ -92,7 +108,15 @@ mod tests {
         let key = test_key();
         let dom = domain_separator("TAP", 42161, Address::ZERO);
 
-        let signed = create_receipt(&key, dom, Address::ZERO, Address::ZERO, 500, Bytes::default()).unwrap();
+        let signed = create_receipt(
+            &key,
+            dom,
+            Address::ZERO,
+            Address::ZERO,
+            500,
+            Bytes::default(),
+        )
+        .unwrap();
         let sig_bytes = hex::decode(signed.signature.trim_start_matches("0x")).unwrap();
         assert_eq!(sig_bytes.len(), 65);
     }

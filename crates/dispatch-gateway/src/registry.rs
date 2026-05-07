@@ -13,7 +13,10 @@ use std::{
 
 use alloy_primitives::Address;
 
-use crate::{config::{CapabilityTier, ProviderConfig}, qos::ProviderQos};
+use crate::{
+    config::{CapabilityTier, ProviderConfig},
+    qos::ProviderQos,
+};
 
 /// A registered RPC provider.
 #[derive(Debug)]
@@ -33,7 +36,10 @@ impl Provider {
         // If dynamic discovery populated per-chain capabilities, use them.
         // Otherwise derive from the global capabilities × declared chains.
         let chain_capabilities = if cfg.chain_capabilities.is_empty() {
-            cfg.chains.iter().map(|&id| (id, cfg.capabilities.clone())).collect()
+            cfg.chains
+                .iter()
+                .map(|&id| (id, cfg.capabilities.clone()))
+                .collect()
         } else {
             cfg.chain_capabilities.clone()
         };
@@ -77,7 +83,10 @@ pub struct Registry {
 
 impl Registry {
     pub fn from_config(providers: &[ProviderConfig]) -> Self {
-        let all: Vec<Arc<Provider>> = providers.iter().map(|c| Arc::new(Provider::from_config(c))).collect();
+        let all: Vec<Arc<Provider>> = providers
+            .iter()
+            .map(|c| Arc::new(Provider::from_config(c)))
+            .collect();
 
         let mut by_chain: HashMap<u64, Vec<Arc<Provider>>> = HashMap::new();
         let mut chain_state: HashMap<u64, Arc<ChainState>> = HashMap::new();
@@ -85,11 +94,17 @@ impl Registry {
         for provider in &all {
             for &chain_id in &provider.chains {
                 by_chain.entry(chain_id).or_default().push(provider.clone());
-                chain_state.entry(chain_id).or_insert_with(|| Arc::new(ChainState::default()));
+                chain_state
+                    .entry(chain_id)
+                    .or_insert_with(|| Arc::new(ChainState::default()));
             }
         }
 
-        Self { all, by_chain, chain_state }
+        Self {
+            all,
+            by_chain,
+            chain_state,
+        }
     }
 
     /// All registered providers (for probing).

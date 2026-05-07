@@ -9,6 +9,9 @@
 //! The RAV's `value_aggregate` equals the sum of ALL receipts ever sent in each
 //! request — maintaining the monotonically-increasing invariant required by
 //! GraphTallyCollector for on-chain collection.
+//!
+//! After a successful upsert, receipts covered by the RAV (timestamp_ns ≤
+//! rav.timestamp_ns) are deleted to keep the table small.
 
 use std::{sync::Arc, time::Duration};
 
@@ -17,7 +20,7 @@ use alloy_primitives::Bytes;
 use crate::{
     config::Config,
     db::{
-        receipts::{distinct_payers, fetch_by_payer, upsert_rav, RavRow},
+        receipts::{delete_covered, distinct_payers, fetch_by_payer, upsert_rav, RavRow},
         Pool,
     },
 };
@@ -52,7 +55,12 @@ pub fn spawn(config: Arc<Config>, pool: Pool) {
 // One aggregation cycle
 // ---------------------------------------------------------------------------
 
-async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &reqwest::Client) -> anyhow::Result<()> {
+async fn run_once(
+    aggregator_url: &str,
+    config: &Config,
+    pool: &Pool,
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
     let payers = distinct_payers(pool).await?;
 
     if payers.is_empty() {
@@ -65,7 +73,16 @@ async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &r
     let endpoint = format!("{aggregator_url}/rav/aggregate");
 
     for payer_hex in payers {
-        if let Err(e) = aggregate_payer(pool, client, &endpoint, service_provider, data_service, &payer_hex).await {
+        if let Err(e) = aggregate_payer(
+            pool,
+            client,
+            &endpoint,
+            service_provider,
+            data_service,
+            &payer_hex,
+        )
+        .await
+        {
             tracing::warn!(payer = %payer_hex, "RAV aggregation failed for payer: {e:#}");
         }
     }
@@ -156,9 +173,12 @@ async fn aggregate_payer(
     )
     .await?;
 
+    let pruned = delete_covered(pool, &payer_hex_lower, rav.timestamp_ns as i64).await?;
+
     tracing::info!(
         payer = %payer_hex,
         receipts = rows.len(),
+        pruned,
         value_aggregate = %rav.value_aggregate,
         "RAV updated"
     );

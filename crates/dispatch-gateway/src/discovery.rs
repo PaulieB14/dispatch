@@ -73,7 +73,12 @@ pub async fn run(state: AppState) {
                 //    the subgraph. This lets operators extend a provider's chain list before
                 //    the on-chain startService() call propagates to the subgraph.
                 for p in &mut providers {
-                    if let Some(s) = state.config.providers.iter().find(|s| s.address == p.address) {
+                    if let Some(s) = state
+                        .config
+                        .providers
+                        .iter()
+                        .find(|s| s.address == p.address)
+                    {
                         if s.endpoint != p.endpoint {
                             tracing::debug!(
                                 address = %p.address,
@@ -86,12 +91,17 @@ pub async fn run(state: AppState) {
 
                         // Derive static chain_capabilities (chains × capabilities when
                         // per-chain map is absent, which is the usual gateway.toml format).
-                        let static_caps: std::collections::HashMap<u64, Vec<crate::config::CapabilityTier>> =
-                            if s.chain_capabilities.is_empty() {
-                                s.chains.iter().map(|&id| (id, s.capabilities.clone())).collect()
-                            } else {
-                                s.chain_capabilities.clone()
-                            };
+                        let static_caps: std::collections::HashMap<
+                            u64,
+                            Vec<crate::config::CapabilityTier>,
+                        > = if s.chain_capabilities.is_empty() {
+                            s.chains
+                                .iter()
+                                .map(|&id| (id, s.capabilities.clone()))
+                                .collect()
+                        } else {
+                            s.chain_capabilities.clone()
+                        };
 
                         for (chain_id, tiers) in static_caps {
                             let entry = p.chain_capabilities.entry(chain_id).or_default();
@@ -114,7 +124,10 @@ pub async fn run(state: AppState) {
                 }
                 let new_registry = Registry::from_config(&providers);
                 state.registry.store(Arc::new(new_registry));
-                tracing::info!(count = providers.len(), "provider registry refreshed from subgraph");
+                tracing::info!(
+                    count = providers.len(),
+                    "provider registry refreshed from subgraph"
+                );
             }
             Ok(_) => tracing::warn!("subgraph returned no active providers"),
             Err(e) => tracing::warn!(error = %e, "subgraph discovery failed"),
@@ -158,7 +171,9 @@ async fn fetch_providers(
             std::collections::HashMap::new();
 
         for c in &indexer.chains {
-            let Ok(chain_id) = c.chain_id.parse::<u64>() else { continue };
+            let Ok(chain_id) = c.chain_id.parse::<u64>() else {
+                continue;
+            };
             let tier = match c.tier {
                 0 => Some(crate::config::CapabilityTier::Standard),
                 1 => Some(crate::config::CapabilityTier::Archive),

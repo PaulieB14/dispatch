@@ -3,6 +3,7 @@ pub mod discovery;
 pub mod error;
 pub mod metrics;
 pub mod probe;
+pub mod provisioner;
 pub mod qos;
 pub mod registry;
 pub mod routes;

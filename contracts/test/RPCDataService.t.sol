@@ -92,10 +92,9 @@ contract RPCDataServiceTest is Test {
         controller = new MockController(address(staking));
 
         RPCDataService impl = new RPCDataService(address(controller), address(0));
-        service = RPCDataService(address(new ERC1967Proxy(
-            address(impl),
-            abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))
-        )));
+        service = RPCDataService(
+            address(new ERC1967Proxy(address(impl), abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))))
+        );
 
         // Pre-populate staking mock with valid provision for `provider`.
         staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
@@ -336,7 +335,9 @@ contract RPCDataServiceTest is Test {
     }
 
     function test_minThawingPeriod_initializedToConstant() public view {
-        assertEq(RPCDataService(address(service)).minThawingPeriod(), RPCDataService(address(service)).MIN_THAWING_PERIOD());
+        assertEq(
+            RPCDataService(address(service)).minThawingPeriod(), RPCDataService(address(service)).MIN_THAWING_PERIOD()
+        );
     }
 
     // -------------------------------------------------------------------------

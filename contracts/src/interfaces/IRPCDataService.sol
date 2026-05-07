@@ -105,5 +105,4 @@ interface IRPCDataService {
     function paymentsDestination(address provider) external view returns (address);
 
     function minThawingPeriod() external view returns (uint64);
-
 }
