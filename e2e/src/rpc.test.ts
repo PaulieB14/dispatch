@@ -37,9 +37,10 @@ beforeAll(() => {
   fx = JSON.parse(process.env.E2E_FIXTURE!) as Fixture;
 });
 
-const SERVICE_URL      = "http://127.0.0.1:7700";
-const SIDE_SERVICE_URL = "http://127.0.0.1:7701"; // low credit_threshold + escrow check, no sender whitelist
-const GATEWAY_URL      = "http://127.0.0.1:8080";
+const SERVICE_URL        = "http://127.0.0.1:7700";
+const SIDE_SERVICE_URL   = "http://127.0.0.1:7701"; // escrow check, no sender whitelist
+const CREDIT_SERVICE_URL = "http://127.0.0.1:7702"; // no escrow check, low credit_threshold
+const GATEWAY_URL        = "http://127.0.0.1:8080";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -624,16 +625,16 @@ describe("service: escrow pre-check", () => {
 
 // ── credit limit ──────────────────────────────────────────────────────────────
 //
-// Side service has credit_threshold = 8_000_000_000_000 (2 CUs at 4T GRT wei each).
-// After two successful requests the third is rejected with 402.
+// Credit service (port 7702) has no escrow check and credit_threshold = 8_000_000_000_000
+// (2 CUs at 4T GRT wei each). After two successful requests the third is rejected with 402.
+// (When escrow is verified on-chain the credit check is skipped; this service has no
+// escrow checker so the credit gate is the only protection.)
 
 describe("service: credit limit", () => {
   it("blocks the third request once accumulated credit reaches the threshold", async () => {
-    // Use gatewayKey (not gatewaySignerKey) so this test has a clean credit slate
-    // independent of the escrow pre-check tests above which used gatewaySignerKey.
-    // gatewayAddress has funded escrow from Phase 4 of SetupE2E (the original deposit).
+    // Sign with gatewayKey — no escrow check on this service, so credit gate applies.
     const makeRequest = async (id: number) =>
-      fetch(`${SIDE_SERVICE_URL}/rpc/31337`, {
+      fetch(`${CREDIT_SERVICE_URL}/rpc/31337`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
