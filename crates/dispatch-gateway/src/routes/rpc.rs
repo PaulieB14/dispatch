@@ -11,7 +11,6 @@ use axum::{
 use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tokio::task::JoinSet;
 
 use crate::{
     config::CapabilityTier, error::GatewayError, metrics, registry::Provider, selector,
@@ -413,11 +412,15 @@ fn verify_attestation(
 // ---------------------------------------------------------------------------
 
 type ProviderResult = (JsonRpcResponse, Option<String>, Arc<Provider>);
-type ProviderTaskResult = Result<ProviderResult, String>;
 type QuorumTaskResult = Result<(JsonRpcResponse, String, Option<String>, Arc<Provider>), String>;
 
 // ---------------------------------------------------------------------------
-// Concurrent dispatch — first valid response wins (non-deterministic methods)
+// Sequential dispatch — try providers in weighted order, fall back on failure.
+//
+// `candidates` are already ordered by weighted random score (highest weight
+// first). The first provider that responds successfully wins and gets the
+// receipt. Failures update QoS so the selector naturally routes less traffic
+// to unhealthy providers over time.
 // ---------------------------------------------------------------------------
 
 async fn dispatch_concurrent(
@@ -430,90 +433,92 @@ async fn dispatch_concurrent(
 ) -> Result<(JsonRpcResponse, Option<String>, Arc<Provider>), GatewayError> {
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
-    let mut set: JoinSet<ProviderTaskResult> = JoinSet::new();
-
     for provider in candidates {
-        let client = state.http_client.clone();
-        let signing_key = state.signing_key.clone();
-        let domain_sep = state.tap_domain_separator;
-        let data_service = state.config.tap.data_service_address;
-        let req = request.clone();
         let p = provider.clone();
-        let params_json = params_json.clone();
-        let method = request.method.clone();
-        let metadata = consumer_metadata.clone();
 
-        set.spawn(async move {
-            let signed = create_receipt(
-                &signing_key,
-                domain_sep,
-                data_service,
-                p.address,
-                receipt_value,
-                metadata,
-            )
-            .map_err(|e| e.to_string())?;
+        let signed = match create_receipt(
+            &state.signing_key,
+            state.tap_domain_separator,
+            state.config.tap.data_service_address,
+            p.address,
+            receipt_value,
+            consumer_metadata.clone(),
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::debug!(error = %e, "failed to create receipt");
+                continue;
+            }
+        };
 
-            let receipt_header = serde_json::to_string(&signed).map_err(|e| e.to_string())?;
-            let url = format!("{}/rpc/{}", p.endpoint, chain_id);
-            let start = Instant::now();
+        let receipt_header = match serde_json::to_string(&signed) {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::debug!(error = %e, "failed to serialize receipt");
+                continue;
+            }
+        };
 
-            let resp = client
-                .post(&url)
-                .header("TAP-Receipt", receipt_header)
-                .json(&req)
-                .send()
-                .await
-                .map_err(|e| format!("connection failed: {e}"))?;
+        let url = format!("{}/rpc/{}", p.endpoint, chain_id);
+        let start = Instant::now();
 
-            let ms = start.elapsed().as_millis() as u64;
-
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
+        let resp = match state
+            .http_client
+            .post(&url)
+            .header("TAP-Receipt", receipt_header)
+            .json(request)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
                 p.qos.record_failure();
-                return Err(format!("HTTP {} body={}", status, body));
+                tracing::debug!(error = %e, provider = %p.endpoint, "provider connection failed, trying next");
+                continue;
             }
+        };
 
-            let att_header = resp
-                .headers()
-                .get("x-drpc-attestation")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string());
+        let ms = start.elapsed().as_millis() as u64;
 
-            let body = resp
-                .json::<JsonRpcResponse>()
-                .await
-                .map_err(|e| format!("invalid response: {e}"))?;
-
-            let result_json = match (&body.result, &body.error) {
-                (Some(r), _) => serde_json::to_string(r).unwrap_or_else(|_| "null".to_string()),
-                (_, Some(e)) => serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()),
-                _ => "null".to_string(),
-            };
-
-            let attestation = verify_attestation(
-                att_header.as_deref(),
-                chain_id,
-                &method,
-                &params_json,
-                &result_json,
-            );
-
-            p.qos.record_success(ms);
-            Ok((body, attestation, p))
-        });
-    }
-
-    while let Some(join_result) = set.join_next().await {
-        match join_result {
-            Ok(Ok((response, attestation, provider))) => {
-                set.abort_all();
-                return Ok((response, attestation, provider));
-            }
-            Ok(Err(e)) => tracing::debug!(error = %e, "provider attempt failed"),
-            Err(e) => tracing::debug!(error = %e, "task panicked"),
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            p.qos.record_failure();
+            tracing::debug!(provider = %p.endpoint, %status, body, "provider returned error, trying next");
+            continue;
         }
+
+        let att_header = resp
+            .headers()
+            .get("x-drpc-attestation")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        let body = match resp.json::<JsonRpcResponse>().await {
+            Ok(b) => b,
+            Err(e) => {
+                p.qos.record_failure();
+                tracing::debug!(error = %e, provider = %p.endpoint, "invalid response, trying next");
+                continue;
+            }
+        };
+
+        let result_json = match (&body.result, &body.error) {
+            (Some(r), _) => serde_json::to_string(r).unwrap_or_else(|_| "null".to_string()),
+            (_, Some(e)) => serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()),
+            _ => "null".to_string(),
+        };
+
+        let attestation = verify_attestation(
+            att_header.as_deref(),
+            chain_id,
+            &request.method,
+            &params_json,
+            &result_json,
+        );
+
+        p.qos.record_success(ms);
+        return Ok((body, attestation, p));
     }
 
     Err(GatewayError::AllProvidersFailed(chain_id))
