@@ -52,7 +52,12 @@ pub fn spawn(config: Arc<Config>, pool: Pool) {
 // One aggregation cycle
 // ---------------------------------------------------------------------------
 
-async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &reqwest::Client) -> anyhow::Result<()> {
+async fn run_once(
+    aggregator_url: &str,
+    config: &Config,
+    pool: &Pool,
+    client: &reqwest::Client,
+) -> anyhow::Result<()> {
     let payers = distinct_payers(pool).await?;
 
     if payers.is_empty() {
@@ -65,7 +70,16 @@ async fn run_once(aggregator_url: &str, config: &Config, pool: &Pool, client: &r
     let endpoint = format!("{aggregator_url}/rav/aggregate");
 
     for payer_hex in payers {
-        if let Err(e) = aggregate_payer(pool, client, &endpoint, service_provider, data_service, &payer_hex).await {
+        if let Err(e) = aggregate_payer(
+            pool,
+            client,
+            &endpoint,
+            service_provider,
+            data_service,
+            &payer_hex,
+        )
+        .await
+        {
             tracing::warn!(payer = %payer_hex, "RAV aggregation failed for payer: {e:#}");
         }
     }

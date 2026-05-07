@@ -1,4 +1,8 @@
-use axum::{extract::{Path, State}, routing::get, Json, Router};
+use axum::{
+    extract::{Path, State},
+    routing::get,
+    Json, Router,
+};
 use serde_json::{json, Value};
 
 use crate::server::AppState;
@@ -22,30 +26,23 @@ async fn version() -> Json<Value> {
     }))
 }
 
-async fn chains(
-    State(state): State<AppState>,
-) -> Json<Value> {
+async fn chains(State(state): State<AppState>) -> Json<Value> {
     Json(json!({ "supported": state.config.chains.supported }))
 }
 
 /// Unauthenticated probe endpoint — returns the current block number for a chain.
 /// Used by gateways to track chain head for QoS freshness scoring.
-async fn block_number(
-    Path(chain_id): Path<u64>,
-    State(state): State<AppState>,
-) -> Json<Value> {
+async fn block_number(Path(chain_id): Path<u64>, State(state): State<AppState>) -> Json<Value> {
     let Some(backend_url) = state.config.chains.backends.get(&chain_id.to_string()) else {
         return Json(json!({ "error": "chain not supported" }));
     };
 
     let req = json!({ "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1 });
     match state.http_client.post(backend_url).json(&req).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<Value>().await {
-                Ok(json) => Json(json),
-                Err(_) => Json(json!({ "error": "invalid backend response" })),
-            }
-        }
+        Ok(resp) if resp.status().is_success() => match resp.json::<Value>().await {
+            Ok(json) => Json(json),
+            Err(_) => Json(json!({ "error": "invalid backend response" })),
+        },
         _ => Json(json!({ "error": "backend unavailable" })),
     }
 }

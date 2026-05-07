@@ -44,15 +44,9 @@ pub enum GatewayError {
 impl IntoResponse for GatewayError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
-            GatewayError::InvalidRequest(_) => {
-                (StatusCode::BAD_REQUEST, -32600, self.to_string())
-            }
-            GatewayError::UnsupportedChain(_) => {
-                (StatusCode::NOT_FOUND, -32002, self.to_string())
-            }
-            GatewayError::RateLimited => {
-                (StatusCode::TOO_MANY_REQUESTS, -32005, self.to_string())
-            }
+            GatewayError::InvalidRequest(_) => (StatusCode::BAD_REQUEST, -32600, self.to_string()),
+            GatewayError::UnsupportedChain(_) => (StatusCode::NOT_FOUND, -32002, self.to_string()),
+            GatewayError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, -32005, self.to_string()),
             GatewayError::NoProviders(_) | GatewayError::AllProvidersFailed(_) => {
                 (StatusCode::SERVICE_UNAVAILABLE, -32003, self.to_string())
             }
@@ -64,7 +58,11 @@ impl IntoResponse for GatewayError {
             }
             GatewayError::Internal(_) => {
                 tracing::error!(error = %self, "internal gateway error");
-                (StatusCode::INTERNAL_SERVER_ERROR, -32603, "internal error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    -32603,
+                    "internal error".to_string(),
+                )
             }
         };
 

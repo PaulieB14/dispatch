@@ -87,23 +87,23 @@ contract SetupE2E is Script {
     //   3: gateway signer            0x90F79bf6EB2c4f870365E785982E1f101E93b906
     //   4: paymentWallet (no key needed; just an address sink)
     // -------------------------------------------------------------------
-    uint256 internal constant DEPLOYER_KEY      = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
-    uint256 internal constant PROVIDER_KEY      = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
-    uint256 internal constant GATEWAY_KEY       = 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a;
+    uint256 internal constant DEPLOYER_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+    uint256 internal constant PROVIDER_KEY = 0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d;
+    uint256 internal constant GATEWAY_KEY = 0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a;
     uint256 internal constant GATEWAY_SIGNER_KEY = 0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6;
 
     uint256 internal constant SUFFICIENT_PROVISION = 10_000e18;
-    uint64  internal constant SUFFICIENT_THAWING   = 14 days;
-    uint256 internal constant DEPOSIT              = 100_000e18;
-    uint64  internal constant CHAIN_ID             = 31337;
+    uint64 internal constant SUFFICIENT_THAWING = 14 days;
+    uint256 internal constant DEPOSIT = 100_000e18;
+    uint64 internal constant CHAIN_ID = 31337;
 
     function run() external {
-        address deployer       = vm.addr(DEPLOYER_KEY);
-        address provider       = vm.addr(PROVIDER_KEY);
-        address gateway        = vm.addr(GATEWAY_KEY);
-        address gatewaySigner  = vm.addr(GATEWAY_SIGNER_KEY);
-        address paymentWallet  = address(uint160(uint256(keccak256("e2e-payment-wallet"))));
-        address pauseGuardian  = address(uint160(uint256(keccak256("e2e-pause-guardian"))));
+        address deployer = vm.addr(DEPLOYER_KEY);
+        address provider = vm.addr(PROVIDER_KEY);
+        address gateway = vm.addr(GATEWAY_KEY);
+        address gatewaySigner = vm.addr(GATEWAY_SIGNER_KEY);
+        address paymentWallet = address(uint160(uint256(keccak256("e2e-payment-wallet"))));
+        address pauseGuardian = address(uint160(uint256(keccak256("e2e-pause-guardian"))));
 
         // ===============================================================
         // Phase 1: deploy as the deployer
@@ -116,13 +116,13 @@ contract SetupE2E is Script {
         MockHorizonStakingIntegration staking = new MockHorizonStakingIntegration();
 
         // 2. setContractProxy for the seven non-payment slots (nonces 3..9)
-        controller.setContractProxy(keccak256("GraphToken"),         address(grt));
-        controller.setContractProxy(keccak256("Staking"),            address(staking));
-        controller.setContractProxy(keccak256("EpochManager"),       address(1));
-        controller.setContractProxy(keccak256("RewardsManager"),     address(1));
-        controller.setContractProxy(keccak256("GraphTokenGateway"),  address(1));
-        controller.setContractProxy(keccak256("GraphProxyAdmin"),    address(1));
-        controller.setContractProxy(keccak256("Curation"),           address(1));
+        controller.setContractProxy(keccak256("GraphToken"), address(grt));
+        controller.setContractProxy(keccak256("Staking"), address(staking));
+        controller.setContractProxy(keccak256("EpochManager"), address(1));
+        controller.setContractProxy(keccak256("RewardsManager"), address(1));
+        controller.setContractProxy(keccak256("GraphTokenGateway"), address(1));
+        controller.setContractProxy(keccak256("GraphProxyAdmin"), address(1));
+        controller.setContractProxy(keccak256("Curation"), address(1));
 
         // 3. Predict GraphPayments and PaymentsEscrow proxy addresses.
         //    From here:
@@ -134,9 +134,9 @@ contract SetupE2E is Script {
         //      n+5: PaymentsEscrow proxy (CREATE)  ← predictedEscrowProxy
         uint64 n = vm.getNonce(deployer);
         address predictedPaymentsProxy = vm.computeCreateAddress(deployer, n + 3);
-        address predictedEscrowProxy   = vm.computeCreateAddress(deployer, n + 5);
+        address predictedEscrowProxy = vm.computeCreateAddress(deployer, n + 5);
 
-        controller.setContractProxy(keccak256("GraphPayments"),  predictedPaymentsProxy);
+        controller.setContractProxy(keccak256("GraphPayments"), predictedPaymentsProxy);
         controller.setContractProxy(keccak256("PaymentsEscrow"), predictedEscrowProxy);
 
         // 4. GraphPayments (impl + proxy)
@@ -144,9 +144,7 @@ contract SetupE2E is Script {
         GraphPayments payments = GraphPayments(
             address(
                 new TransparentUpgradeableProxy(
-                    address(paymentsImpl),
-                    address(1),
-                    abi.encodeCall(GraphPayments.initialize, ())
+                    address(paymentsImpl), address(1), abi.encodeCall(GraphPayments.initialize, ())
                 )
             )
         );
@@ -157,24 +155,24 @@ contract SetupE2E is Script {
         PaymentsEscrow escrow = PaymentsEscrow(
             address(
                 new TransparentUpgradeableProxy(
-                    address(escrowImpl),
-                    address(1),
-                    abi.encodeCall(PaymentsEscrow.initialize, ())
+                    address(escrowImpl), address(1), abi.encodeCall(PaymentsEscrow.initialize, ())
                 )
             )
         );
         require(address(escrow) == predictedEscrowProxy, "escrow proxy mismatch");
 
         // 6. GraphTallyCollector — non-upgradeable, zero thawing for tests.
-        GraphTallyCollector tallyCollector =
-            new GraphTallyCollector("GraphTallyCollector", "1", address(controller), 0);
+        GraphTallyCollector tallyCollector = new GraphTallyCollector("GraphTallyCollector", "1", address(controller), 0);
 
         // 7. RPCDataService (impl + proxy) — owner = deployer for the addChain call below.
         RPCDataService serviceImpl = new RPCDataService(address(controller), address(tallyCollector));
-        RPCDataService service = RPCDataService(address(new ERC1967Proxy(
-            address(serviceImpl),
-            abi.encodeCall(RPCDataService.initialize, (deployer, pauseGuardian))
-        )));
+        RPCDataService service = RPCDataService(
+            address(
+                new ERC1967Proxy(
+                    address(serviceImpl), abi.encodeCall(RPCDataService.initialize, (deployer, pauseGuardian))
+                )
+            )
+        );
 
         // 8. Provision stake for the provider in the mock staking contract.
         staking.setProvision(provider, address(service), SUFFICIENT_PROVISION, SUFFICIENT_THAWING);
@@ -228,17 +226,33 @@ contract SetupE2E is Script {
         // ===============================================================
         string memory json = string(
             abi.encodePacked(
-                '{"rpcDataService":"',          vm.toString(address(service)),         '",',
-                '"graphTallyCollector":"',      vm.toString(address(tallyCollector)),  '",',
-                '"paymentsEscrow":"',           vm.toString(address(escrow)),          '",',
-                '"grtToken":"',                 vm.toString(address(grt)),             '",',
-                '"providerAddress":"',          vm.toString(provider),                 '",',
+                '{"rpcDataService":"',
+                vm.toString(address(service)),
+                '",',
+                '"graphTallyCollector":"',
+                vm.toString(address(tallyCollector)),
+                '",',
+                '"paymentsEscrow":"',
+                vm.toString(address(escrow)),
+                '",',
+                '"grtToken":"',
+                vm.toString(address(grt)),
+                '",',
+                '"providerAddress":"',
+                vm.toString(provider),
+                '",',
                 '"providerKey":"0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",',
-                '"gatewayAddress":"',           vm.toString(gateway),                  '",',
+                '"gatewayAddress":"',
+                vm.toString(gateway),
+                '",',
                 '"gatewayKey":"0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",',
-                '"gatewaySignerAddress":"',     vm.toString(gatewaySigner),            '",',
+                '"gatewaySignerAddress":"',
+                vm.toString(gatewaySigner),
+                '",',
                 '"gatewaySignerKey":"0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",',
-                '"paymentWallet":"',            vm.toString(paymentWallet),            '"}'
+                '"paymentWallet":"',
+                vm.toString(paymentWallet),
+                '"}'
             )
         );
         vm.writeFile("out/e2e-fixture.json", json);

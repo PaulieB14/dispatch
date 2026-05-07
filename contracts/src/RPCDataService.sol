@@ -6,8 +6,9 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 
 import {DataService} from "@graphprotocol/horizon/data-service/DataService.sol";
 import {DataServiceFees} from "@graphprotocol/horizon/data-service/extensions/DataServiceFees.sol";
-import {DataServicePausableUpgradeable} from
-    "@graphprotocol/horizon/data-service/extensions/DataServicePausableUpgradeable.sol";
+import {
+    DataServicePausableUpgradeable
+} from "@graphprotocol/horizon/data-service/extensions/DataServicePausableUpgradeable.sol";
 import {IGraphPayments} from "@graphprotocol/horizon/interfaces/IGraphPayments.sol";
 import {IGraphTallyCollector} from "@graphprotocol/horizon/interfaces/IGraphTallyCollector.sol";
 import {IHorizonStaking} from "@graphprotocol/horizon/interfaces/IHorizonStaking.sol";
@@ -295,11 +296,7 @@ contract RPCDataService is
         uint256 balanceBefore = _graphToken().balanceOf(address(this));
         fees = GRAPH_TALLY_COLLECTOR.collect(
             paymentType,
-            abi.encode(
-                signedRav,
-                BURN_CUT_PPM + DATA_SERVICE_CUT_PPM,
-                paymentsDestination[serviceProvider]
-            ),
+            abi.encode(signedRav, BURN_CUT_PPM + DATA_SERVICE_CUT_PPM, paymentsDestination[serviceProvider]),
             tokensToCollect
         );
 

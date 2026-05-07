@@ -15,7 +15,11 @@ fn de_u128<'de, D: Deserializer<'de>>(d: D) -> Result<u128, D::Error> {
     }
     match Raw::deserialize(d)? {
         Raw::Int(n) => u128::try_from(n).map_err(|_| D::Error::custom("negative u128")),
-        Raw::Str(s) => s.trim().replace('_', "").parse::<u128>().map_err(|e| D::Error::custom(e)),
+        Raw::Str(s) => s
+            .trim()
+            .replace('_', "")
+            .parse::<u128>()
+            .map_err(|e| D::Error::custom(e)),
     }
 }
 

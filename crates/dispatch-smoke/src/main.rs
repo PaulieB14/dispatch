@@ -56,10 +56,12 @@ fn tests() -> Vec<Test> {
             name: "eth_chainId — returns 0x61a9 (42161)",
             method: "eth_chainId",
             params: json!([]),
-            validate: |r| r.as_str().map_or(false, |s| {
-                u64::from_str_radix(s.trim_start_matches("0x"), 16)
-                    .map_or(false, |id| id == 42161)
-            }),
+            validate: |r| {
+                r.as_str().map_or(false, |s| {
+                    u64::from_str_radix(s.trim_start_matches("0x"), 16)
+                        .map_or(false, |id| id == 42161)
+                })
+            },
         },
         Test {
             name: "net_version — returns chain ID as decimal string",
@@ -84,7 +86,11 @@ fn tests() -> Vec<Test> {
             name: "eth_getBlockByNumber — latest (Standard tier)",
             method: "eth_getBlockByNumber",
             params: json!(["latest", false]),
-            validate: |r| r.get("number").and_then(|n| n.as_str()).map_or(false, |s| s.starts_with("0x")),
+            validate: |r| {
+                r.get("number")
+                    .and_then(|n| n.as_str())
+                    .map_or(false, |s| s.starts_with("0x"))
+            },
         },
         Test {
             name: "eth_getCode — WETH contract on Arbitrum",
@@ -159,14 +165,13 @@ async fn main() -> Result<()> {
     .unwrap_or(TALLY_COLLECTOR);
 
     let consumer_address: Option<Address> =
-        opt_maybe("--consumer-address", "DISPATCH_CONSUMER_ADDRESS")
-            .and_then(|s| s.parse().ok());
+        opt_maybe("--consumer-address", "DISPATCH_CONSUMER_ADDRESS").and_then(|s| s.parse().ok());
 
     // Use provided key or generate a fresh ephemeral one.
     let signing_key = match opt_maybe("--signer-key", "DISPATCH_SIGNER_KEY") {
         Some(hex) => {
-            let bytes = hex::decode(hex.trim_start_matches("0x"))
-                .context("--signer-key: invalid hex")?;
+            let bytes =
+                hex::decode(hex.trim_start_matches("0x")).context("--signer-key: invalid hex")?;
             SigningKey::from_slice(&bytes).context("--signer-key: invalid key")?
         }
         None => SigningKey::random(&mut OsRng),
@@ -177,7 +182,8 @@ async fn main() -> Result<()> {
         .unwrap_or(Address::ZERO);
 
     let signer_address = dispatch_tap::address_from_key(&signing_key);
-    let domain_sep = dispatch_tap::domain_separator("GraphTallyCollector", EIP712_CHAIN_ID, tally_collector);
+    let domain_sep =
+        dispatch_tap::domain_separator("GraphTallyCollector", EIP712_CHAIN_ID, tally_collector);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -278,14 +284,24 @@ async fn main() -> Result<()> {
                     failed += 1;
                 } else if let Some(result) = json.get("result") {
                     if (test.validate)(result) {
-                        println!("  [PASS] {} → {} [{elapsed}ms]", test.name, truncate(&result.to_string(), 40));
+                        println!(
+                            "  [PASS] {} → {} [{elapsed}ms]",
+                            test.name,
+                            truncate(&result.to_string(), 40)
+                        );
                         passed += 1;
                     } else {
-                        println!("  [FAIL] {} — unexpected result: {result} [{elapsed}ms]", test.name);
+                        println!(
+                            "  [FAIL] {} — unexpected result: {result} [{elapsed}ms]",
+                            test.name
+                        );
                         failed += 1;
                     }
                 } else {
-                    println!("  [FAIL] {} — no result field: {json} [{elapsed}ms]", test.name);
+                    println!(
+                        "  [FAIL] {} — no result field: {json} [{elapsed}ms]",
+                        test.name
+                    );
                     failed += 1;
                 }
             }
@@ -332,9 +348,14 @@ async fn main() -> Result<()> {
             let json: Value = r.json().await.unwrap_or(Value::Null);
             if let Some(arr) = json.as_array() {
                 // Batch of 2: both may have results OR receipt-rejection errors
-                let all_responded = arr.iter().all(|item| item.get("result").is_some() || item.get("error").is_some());
+                let all_responded = arr
+                    .iter()
+                    .all(|item| item.get("result").is_some() || item.get("error").is_some());
                 if all_responded && arr.len() == 2 {
-                    println!("  [PASS] batch(2) — {len} responses [{elapsed}ms]", len = arr.len());
+                    println!(
+                        "  [PASS] batch(2) — {len} responses [{elapsed}ms]",
+                        len = arr.len()
+                    );
                     passed += 1;
                 } else {
                     println!("  [FAIL] batch(2) — unexpected response: {json} [{elapsed}ms]");
@@ -372,7 +393,10 @@ async fn main() -> Result<()> {
         }
         Ok(r) => {
             let json: Value = r.json().await.unwrap_or(Value::Null);
-            let code = json.get("error").and_then(|e| e.get("code")).and_then(|c| c.as_i64());
+            let code = json
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64());
             if code == Some(-32001) {
                 println!("  [PASS] missing receipt → -32001 (MissingReceipt) [{elapsed}ms]");
                 passed += 1;
@@ -410,7 +434,10 @@ async fn main() -> Result<()> {
         }
         Ok(r) => {
             let json: Value = r.json().await.unwrap_or(Value::Null);
-            let code = json.get("error").and_then(|e| e.get("code")).and_then(|c| c.as_i64());
+            let code = json
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(|c| c.as_i64());
             if code == Some(-32001) {
                 println!("  [PASS] malformed receipt → -32001 (InvalidReceipt) [{elapsed}ms]");
                 passed += 1;

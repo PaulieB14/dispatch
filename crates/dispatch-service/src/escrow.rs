@@ -139,7 +139,10 @@ impl EscrowChecker {
 mod tests {
     use super::*;
     use axum::{routing::post, Json, Router};
-    use std::sync::{atomic::{AtomicUsize, Ordering}, Arc};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
 
     /// ABI-encode the three-uint256 return value of getBalance, placing `balance`
     /// in the first slot (bytes 0-31, big-endian).
@@ -202,7 +205,11 @@ mod tests {
         let c = checker(&url);
         c.balance(Address::ZERO).await.unwrap(); // fetches from server
         c.balance(Address::ZERO).await.unwrap(); // must use cache
-        assert_eq!(counter.load(Ordering::SeqCst), 1, "server should be called exactly once");
+        assert_eq!(
+            counter.load(Ordering::SeqCst),
+            1,
+            "server should be called exactly once"
+        );
     }
 
     #[tokio::test]

@@ -5,7 +5,11 @@ use crate::{db::Pool, tap::ValidatedReceipt};
 /// Persist a validated TAP receipt to PostgreSQL.
 ///
 /// Returns the auto-assigned row `id`.
-pub async fn insert(pool: &Pool, chain_id: u64, validated: &ValidatedReceipt) -> anyhow::Result<i64> {
+pub async fn insert(
+    pool: &Pool,
+    chain_id: u64,
+    validated: &ValidatedReceipt,
+) -> anyhow::Result<i64> {
     let row = sqlx::query(
         r#"
         INSERT INTO tap_receipts
@@ -71,7 +75,11 @@ pub async fn recent(pool: &Pool, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> 
 }
 
 /// Fetch the most recent receipts for a specific consumer, newest first.
-pub async fn by_payer_recent(pool: &Pool, payer_hex: &str, limit: i64) -> anyhow::Result<Vec<ReceiptRow>> {
+pub async fn by_payer_recent(
+    pool: &Pool,
+    payer_hex: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<ReceiptRow>> {
     let rows = sqlx::query(
         r#"
         SELECT id, payer_address, chain_id, timestamp_ns, value, method
@@ -109,7 +117,7 @@ pub struct RawReceipt {
     pub payer_address: String,
     pub timestamp_ns: i64,
     pub nonce: i64,
-    pub value: String,         // decimal u128
+    pub value: String, // decimal u128
     pub signature: String,
     pub metadata: Vec<u8>,
 }

@@ -10,8 +10,7 @@ use axum::{
 use serde_json::Value;
 
 use crate::{
-    attestation,
-    db,
+    attestation, db,
     error::ServiceError,
     rpc::{proxy, types::JsonRpcRequest},
     server::AppState,
@@ -106,7 +105,8 @@ async fn rpc_handler(
             let requests = parse_batch(items)?;
             tracing::debug!(count = requests.len(), chain_id, "dispatching batch");
 
-            let responses = proxy::forward_batch(&state.http_client, &backend_url, &requests).await?;
+            let responses =
+                proxy::forward_batch(&state.http_client, &backend_url, &requests).await?;
 
             // --- Increment consumer credit ---
             {
@@ -157,7 +157,8 @@ async fn rpc_handler(
             }
 
             // --- Sign the response ---
-            let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
+            let params_json =
+                serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
             let result_json = match (&response.result, &response.error) {
                 (Some(r), _) => serde_json::to_string(r).unwrap_or_else(|_| "null".to_string()),
                 (_, Some(e)) => serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()),
@@ -177,7 +178,10 @@ async fn rpc_handler(
                 Ok(att) => {
                     if let Ok(header_val) = serde_json::to_string(&att)
                         .map_err(|e| e.to_string())
-                        .and_then(|s| s.parse().map_err(|e: axum::http::header::InvalidHeaderValue| e.to_string()))
+                        .and_then(|s| {
+                            s.parse()
+                                .map_err(|e: axum::http::header::InvalidHeaderValue| e.to_string())
+                        })
                     {
                         resp.headers_mut().insert("x-drpc-attestation", header_val);
                     }
@@ -278,7 +282,7 @@ mod tests {
     fn parse_batch_one_bad_item_fails_whole_batch() {
         let items = vec![
             json!({"jsonrpc": "2.0", "method": "eth_blockNumber", "id": 1}),
-            json!({"jsonrpc": "2.0", "method": "", "id": 2}),  // bad
+            json!({"jsonrpc": "2.0", "method": "", "id": 2}), // bad
             json!({"jsonrpc": "2.0", "method": "eth_chainId", "id": 3}),
         ];
         assert!(matches!(
@@ -290,9 +294,7 @@ mod tests {
     #[test]
     fn parse_batch_null_id_is_allowed() {
         // JSON null deserialises as None for Option<Value> — same as absent field.
-        let items = vec![
-            json!({"jsonrpc": "2.0", "method": "eth_blockNumber", "id": null}),
-        ];
+        let items = vec![json!({"jsonrpc": "2.0", "method": "eth_blockNumber", "id": null})];
         let reqs = parse_batch(items).unwrap();
         assert_eq!(reqs[0].id, None);
     }
@@ -300,9 +302,7 @@ mod tests {
     #[test]
     fn parse_batch_no_id_field_is_allowed() {
         // id is Option<Value> — absent is fine (notification style)
-        let items = vec![
-            json!({"jsonrpc": "2.0", "method": "eth_blockNumber"}),
-        ];
+        let items = vec![json!({"jsonrpc": "2.0", "method": "eth_blockNumber"})];
         let reqs = parse_batch(items).unwrap();
         assert_eq!(reqs[0].id, None);
     }

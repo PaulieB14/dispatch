@@ -45,12 +45,8 @@ impl IntoResponse for ServiceError {
             ServiceError::MissingReceipt
             | ServiceError::InvalidReceipt(_)
             | ServiceError::UnauthorizedSender(_)
-            | ServiceError::ReceiptExpired => {
-                (StatusCode::UNAUTHORIZED, -32001, self.to_string())
-            }
-            ServiceError::UnsupportedChain(_) => {
-                (StatusCode::NOT_FOUND, -32002, self.to_string())
-            }
+            | ServiceError::ReceiptExpired => (StatusCode::UNAUTHORIZED, -32001, self.to_string()),
+            ServiceError::UnsupportedChain(_) => (StatusCode::NOT_FOUND, -32002, self.to_string()),
             ServiceError::CreditLimitExceeded | ServiceError::InsufficientEscrow => {
                 (StatusCode::PAYMENT_REQUIRED, -32005, self.to_string())
             }

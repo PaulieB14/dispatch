@@ -8,10 +8,11 @@ interface IGraphTallyCollector {
         address payer;
         address serviceProvider;
         address dataService;
-        uint64  timestampNs;
+        uint64 timestampNs;
         uint128 valueAggregate;
-        bytes   metadata;
+        bytes metadata;
     }
+
     struct SignedRAV {
         ReceiptAggregateVoucher rav;
         bytes signature;
@@ -25,9 +26,9 @@ interface IRPCDataService {
 }
 
 contract TestCollect is Script {
-    address constant RPC_DS    = 0x73846272813065c3e4Efdb3Fb82E0d128c8C2364;
-    address constant PROVIDER  = 0xb43B2CCCceadA5292732a8C58ae134AdEFcE09Bb;
-    address constant OPERATOR  = 0xd370EE7A865779D252F65c7455592f9f7d6F9A99;
+    address constant RPC_DS = 0x73846272813065c3e4Efdb3Fb82E0d128c8C2364;
+    address constant PROVIDER = 0xb43B2CCCceadA5292732a8C58ae134AdEFcE09Bb;
+    address constant OPERATOR = 0xd370EE7A865779D252F65c7455592f9f7d6F9A99;
 
     function run() external {
         console2.log("provider registered:", IRPCDataService(RPC_DS).isRegistered(PROVIDER));
@@ -49,9 +50,8 @@ contract TestCollect is Script {
         bytes memory data = abi.encode(signedRav, uint256(0));
 
         vm.startBroadcast(OPERATOR);
-        (bool ok, bytes memory ret) = RPC_DS.call(
-            abi.encodeWithSignature("collect(address,uint8,bytes)", PROVIDER, uint8(0), data)
-        );
+        (bool ok, bytes memory ret) =
+            RPC_DS.call(abi.encodeWithSignature("collect(address,uint8,bytes)", PROVIDER, uint8(0), data));
         console2.log("collect ok:", ok);
         if (!ok) {
             console2.logBytes(ret);

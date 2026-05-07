@@ -11,7 +11,9 @@
 
 use std::{sync::Arc, time::Duration};
 
-use alloy::{network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol};
+use alloy::{
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol,
+};
 use alloy_primitives::{Address, U256};
 use tokio::time::{interval, MissedTickBehavior};
 

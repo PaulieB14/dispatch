@@ -40,11 +40,15 @@ pub async fn run(config: Config) -> Result<()> {
     );
 
     let signer_address = dispatch_tap::address_from_key(&signing_key);
-    let registry = Arc::new(ArcSwap::from_pointee(Registry::from_config(&config.providers)));
+    let registry = Arc::new(ArcSwap::from_pointee(Registry::from_config(
+        &config.providers,
+    )));
 
     let rate_limiter = config.rate_limit.as_ref().map(|rl| {
-        let quota = Quota::per_second(NonZeroU32::new(rl.requests_per_second).unwrap_or(NonZeroU32::new(100).unwrap()))
-            .allow_burst(NonZeroU32::new(rl.burst).unwrap_or(NonZeroU32::new(20).unwrap()));
+        let quota = Quota::per_second(
+            NonZeroU32::new(rl.requests_per_second).unwrap_or(NonZeroU32::new(100).unwrap()),
+        )
+        .allow_burst(NonZeroU32::new(rl.burst).unwrap_or(NonZeroU32::new(20).unwrap()));
         Arc::new(RateLimiter::dashmap(quota))
     });
 

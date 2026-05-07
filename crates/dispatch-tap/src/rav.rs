@@ -65,7 +65,11 @@ pub fn rav_struct_hash(rav: &Rav) -> B256 {
 }
 
 /// Sign a RAV with the gateway's signing key and the pre-computed domain separator.
-pub fn sign_rav(signing_key: &SigningKey, domain_sep: B256, rav: Rav) -> Result<SignedRav, SignError> {
+pub fn sign_rav(
+    signing_key: &SigningKey,
+    domain_sep: B256,
+    rav: Rav,
+) -> Result<SignedRav, SignError> {
     let hash = eip712_hash_raw(domain_sep, rav_struct_hash(&rav));
     let (sig, rec_id) = signing_key.sign_prehash_recoverable(hash.as_slice())?;
     let mut sig_bytes = [0u8; 65];
@@ -98,8 +102,12 @@ mod tests {
         let dom = domain_separator("GraphTallyCollector", 42161, Address::ZERO);
 
         let payer = expected_signer;
-        let sp: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
-        let ds: Address = "0x1000000000000000000000000000000000000001".parse().unwrap();
+        let sp: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            .parse()
+            .unwrap();
+        let ds: Address = "0x1000000000000000000000000000000000000001"
+            .parse()
+            .unwrap();
 
         let rav = Rav {
             collection_id: collection_id(payer, sp, ds),
@@ -119,13 +127,21 @@ mod tests {
 
     #[test]
     fn collection_id_deterministic() {
-        let (p, sp, ds) = (Address::from([1u8; 20]), Address::from([2u8; 20]), Address::from([3u8; 20]));
+        let (p, sp, ds) = (
+            Address::from([1u8; 20]),
+            Address::from([2u8; 20]),
+            Address::from([3u8; 20]),
+        );
         assert_eq!(collection_id(p, sp, ds), collection_id(p, sp, ds));
     }
 
     #[test]
     fn collection_id_sensitive_to_order() {
-        let (a, b, c) = (Address::from([1u8; 20]), Address::from([2u8; 20]), Address::from([3u8; 20]));
+        let (a, b, c) = (
+            Address::from([1u8; 20]),
+            Address::from([2u8; 20]),
+            Address::from([3u8; 20]),
+        );
         assert_ne!(collection_id(a, b, c), collection_id(b, a, c));
     }
 }

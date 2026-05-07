@@ -187,10 +187,13 @@ contract RPCDataServiceIntegrationTest is Test {
 
         // 7. Our contract under test.
         RPCDataService serviceImpl = new RPCDataService(address(controller), address(tallyCollector));
-        service = RPCDataService(address(new ERC1967Proxy(
-            address(serviceImpl),
-            abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))
-        )));
+        service = RPCDataService(
+            address(
+                new ERC1967Proxy(
+                    address(serviceImpl), abi.encodeCall(RPCDataService.initialize, (owner, pauseGuardian))
+                )
+            )
+        );
 
         // 8. Governance: enable chain 1 (Ethereum mainnet).
         vm.prank(owner);

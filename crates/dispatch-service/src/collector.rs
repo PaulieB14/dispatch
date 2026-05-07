@@ -14,10 +14,7 @@ use std::{
 };
 
 use alloy::{
-    network::EthereumWallet,
-    providers::ProviderBuilder,
-    signers::local::PrivateKeySigner,
-    sol,
+    network::EthereumWallet, providers::ProviderBuilder, signers::local::PrivateKeySigner, sol,
 };
 use alloy_primitives::{Address, Bytes, FixedBytes, U256};
 use alloy_sol_types::SolValue;
@@ -64,7 +61,11 @@ sol! {
 }
 
 /// Spawn the collector loop. Returns immediately; runs until the process exits.
-pub fn spawn(config: Arc<Config>, pool: Pool, consumer_credit: Arc<RwLock<HashMap<Address, u128>>>) {
+pub fn spawn(
+    config: Arc<Config>,
+    pool: Pool,
+    consumer_credit: Arc<RwLock<HashMap<Address, u128>>>,
+) {
     let Some(collector_cfg) = config.collector.clone() else {
         tracing::info!("no [collector] config — on-chain RAV collection disabled");
         return;

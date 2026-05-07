@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn message_hash_differs_by_chain_id() {
-        let h1 = message_hash(1,     "eth_blockNumber", "[]", "\"0x1\"");
+        let h1 = message_hash(1, "eth_blockNumber", "[]", "\"0x1\"");
         let h2 = message_hash(42161, "eth_blockNumber", "[]", "\"0x1\"");
         assert_ne!(h1, h2);
     }
@@ -76,15 +76,15 @@ mod tests {
     #[test]
     fn message_hash_differs_by_method() {
         let h1 = message_hash(1, "eth_blockNumber", "[]", "\"0x1\"");
-        let h2 = message_hash(1, "eth_chainId",    "[]", "\"0x1\"");
+        let h2 = message_hash(1, "eth_chainId", "[]", "\"0x1\"");
         assert_ne!(h1, h2);
     }
 
     #[test]
     fn sign_produces_valid_65_byte_hex_signature() {
-        let key  = test_key();
+        let key = test_key();
         let addr = Address::default();
-        let att  = sign(&key, addr, 1, "eth_blockNumber", "[]", "\"0x1\"").unwrap();
+        let att = sign(&key, addr, 1, "eth_blockNumber", "[]", "\"0x1\"").unwrap();
         // "0x" + 130 hex chars = 132 total
         assert_eq!(att.signature.len(), 132);
         assert!(att.signature.starts_with("0x"));
@@ -95,10 +95,10 @@ mod tests {
 
     #[test]
     fn different_messages_produce_different_signatures() {
-        let key  = test_key();
+        let key = test_key();
         let addr = Address::default();
         let att1 = sign(&key, addr, 1, "eth_blockNumber", "[]", "\"0x1\"").unwrap();
-        let att2 = sign(&key, addr, 1, "eth_chainId",    "[]", "\"0x2\"").unwrap();
+        let att2 = sign(&key, addr, 1, "eth_chainId", "[]", "\"0x2\"").unwrap();
         assert_ne!(att1.signature, att2.signature);
     }
 }

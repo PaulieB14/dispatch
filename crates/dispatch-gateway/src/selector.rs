@@ -80,7 +80,7 @@ fn score_with_floor(score: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{registry::Provider, qos::ProviderQos};
+    use crate::{qos::ProviderQos, registry::Provider};
     use alloy_primitives::Address;
 
     fn make_provider(endpoint: &str) -> Arc<Provider> {
@@ -107,18 +107,23 @@ mod tests {
 
     #[test]
     fn select_returns_at_most_k() {
-        let providers: Vec<_> = (0..5).map(|i| make_provider(&format!("http://p{i}"))).collect();
+        let providers: Vec<_> = (0..5)
+            .map(|i| make_provider(&format!("http://p{i}")))
+            .collect();
         let selected = select(&providers, 1000, 3, None, 0.15);
         assert_eq!(selected.len(), 3);
     }
 
     #[test]
     fn select_no_duplicates() {
-        let providers: Vec<_> = (0..5).map(|i| make_provider(&format!("http://p{i}"))).collect();
+        let providers: Vec<_> = (0..5)
+            .map(|i| make_provider(&format!("http://p{i}")))
+            .collect();
         let selected = select(&providers, 1000, 5, None, 0.15);
         assert_eq!(selected.len(), 5);
         // All endpoints distinct
-        let endpoints: std::collections::HashSet<_> = selected.iter().map(|p| &p.endpoint).collect();
+        let endpoints: std::collections::HashSet<_> =
+            selected.iter().map(|p| &p.endpoint).collect();
         assert_eq!(endpoints.len(), 5);
     }
 
@@ -130,7 +135,9 @@ mod tests {
 
     #[test]
     fn select_k_larger_than_providers() {
-        let providers: Vec<_> = (0..2).map(|i| make_provider(&format!("http://p{i}"))).collect();
+        let providers: Vec<_> = (0..2)
+            .map(|i| make_provider(&format!("http://p{i}")))
+            .collect();
         let selected = select(&providers, 1000, 10, None, 0.15);
         assert_eq!(selected.len(), 2);
     }

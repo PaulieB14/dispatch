@@ -13,12 +13,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::task::JoinSet;
 
-use crate::{config::CapabilityTier, error::GatewayError, metrics, registry::Provider, selector, server::AppState};
+use crate::{
+    config::CapabilityTier, error::GatewayError, metrics, registry::Provider, selector,
+    server::AppState,
+};
 use dispatch_tap::create_receipt;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/rpc/:chain_id/:consumer_address", post(rpc_handler_with_consumer))
+        .route(
+            "/rpc/:chain_id/:consumer_address",
+            post(rpc_handler_with_consumer),
+        )
         .route("/rpc/:chain_id", post(rpc_handler))
         .route("/rpc", post(rpc_handler_unified))
 }
@@ -77,7 +83,6 @@ async fn dispatch_rpc(
     consumer: Address,
     body: Value,
 ) -> Result<Response, GatewayError> {
-
     // --- Per-IP rate limiting ---
     if let Some(limiter) = &state.rate_limiter {
         if limiter.check_key(&peer.ip()).is_err() {
@@ -97,7 +102,9 @@ async fn dispatch_rpc(
                 .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
 
             let responses: Vec<Value> = join_all(
-                requests.iter().map(|req| process_request(&state, chain_id, req, consumer)),
+                requests
+                    .iter()
+                    .map(|req| process_request(&state, chain_id, req, consumer)),
             )
             .await
             .into_iter()
@@ -116,7 +123,8 @@ async fn dispatch_rpc(
         Value::Object(_) => {
             let request: JsonRpcRequest = serde_json::from_value(body)
                 .map_err(|e| GatewayError::InvalidRequest(e.to_string()))?;
-            let (response, attestation) = process_request(&state, chain_id, &request, consumer).await?;
+            let (response, attestation) =
+                process_request(&state, chain_id, &request, consumer).await?;
             let mut resp = Json(response).into_response();
             if let Some(att) = attestation {
                 if let Ok(val) = att.parse() {
@@ -271,9 +279,11 @@ async fn process_request(
         let tier = required_tier(&request.method, &request.params);
         let capable: Vec<_> = providers
             .iter()
-            .filter(|p| p.chain_capabilities
-                .get(&chain_id)
-                .map_or(false, |caps| caps.contains(&tier)))
+            .filter(|p| {
+                p.chain_capabilities
+                    .get(&chain_id)
+                    .map_or(false, |caps| caps.contains(&tier))
+            })
             .cloned()
             .collect();
 
@@ -310,13 +320,33 @@ async fn process_request(
     let start = Instant::now();
 
     let (response, attestation, winner) = if requires_quorum(&request.method) {
-        dispatch_quorum(state, chain_id, request, &candidates, receipt_value, consumer_metadata).await?
+        dispatch_quorum(
+            state,
+            chain_id,
+            request,
+            &candidates,
+            receipt_value,
+            consumer_metadata,
+        )
+        .await?
     } else {
-        dispatch_concurrent(state, chain_id, request, &candidates, receipt_value, consumer_metadata).await?
+        dispatch_concurrent(
+            state,
+            chain_id,
+            request,
+            &candidates,
+            receipt_value,
+            consumer_metadata,
+        )
+        .await?
     };
 
     let duration = start.elapsed().as_secs_f64();
-    let outcome = if response.error.is_some() { "error" } else { "ok" };
+    let outcome = if response.error.is_some() {
+        "error"
+    } else {
+        "ok"
+    };
     metrics::record(chain_id, &request.method, outcome, duration);
 
     tracing::debug!(
@@ -347,7 +377,10 @@ fn verify_attestation(
     let header = attestation_header?;
 
     #[derive(serde::Deserialize)]
-    struct Att { signer: String, signature: String }
+    struct Att {
+        signer: String,
+        signature: String,
+    }
 
     let att: Att = serde_json::from_str(header).ok()?;
 
@@ -388,7 +421,8 @@ async fn dispatch_concurrent(
 ) -> Result<(JsonRpcResponse, Option<String>, Arc<Provider>), GatewayError> {
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
-    let mut set: JoinSet<Result<(JsonRpcResponse, Option<String>, Arc<Provider>), String>> = JoinSet::new();
+    let mut set: JoinSet<Result<(JsonRpcResponse, Option<String>, Arc<Provider>), String>> =
+        JoinSet::new();
 
     for provider in candidates {
         let client = state.http_client.clone();
@@ -492,89 +526,96 @@ async fn dispatch_quorum(
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
     // Collect all responses concurrently, then take majority.
-    let futures: Vec<_> = candidates.iter().map(|provider| {
-        let client = state.http_client.clone();
-        let signing_key = state.signing_key.clone();
-        let domain_sep = state.tap_domain_separator;
-        let data_service = state.config.tap.data_service_address;
-        let req = request.clone();
-        let p = provider.clone();
-        let params_json = params_json.clone();
-        let method = request.method.clone();
-        let metadata = consumer_metadata.clone();
+    let futures: Vec<_> = candidates
+        .iter()
+        .map(|provider| {
+            let client = state.http_client.clone();
+            let signing_key = state.signing_key.clone();
+            let domain_sep = state.tap_domain_separator;
+            let data_service = state.config.tap.data_service_address;
+            let req = request.clone();
+            let p = provider.clone();
+            let params_json = params_json.clone();
+            let method = request.method.clone();
+            let metadata = consumer_metadata.clone();
 
-        async move {
-            let signed = create_receipt(
-                &signing_key,
-                domain_sep,
-                data_service,
-                p.address,
-                receipt_value,
-                metadata,
-            )
-            .map_err(|e| e.to_string())?;
+            async move {
+                let signed = create_receipt(
+                    &signing_key,
+                    domain_sep,
+                    data_service,
+                    p.address,
+                    receipt_value,
+                    metadata,
+                )
+                .map_err(|e| e.to_string())?;
 
-            let receipt_header = serde_json::to_string(&signed).map_err(|e| e.to_string())?;
-            let url = format!("{}/rpc/{}", p.endpoint, chain_id);
-            let start = Instant::now();
+                let receipt_header = serde_json::to_string(&signed).map_err(|e| e.to_string())?;
+                let url = format!("{}/rpc/{}", p.endpoint, chain_id);
+                let start = Instant::now();
 
-            let resp = client
-                .post(&url)
-                .header("TAP-Receipt", receipt_header)
-                .json(&req)
-                .send()
-                .await
-                .map_err(|e| format!("connection failed: {e}"))?;
+                let resp = client
+                    .post(&url)
+                    .header("TAP-Receipt", receipt_header)
+                    .json(&req)
+                    .send()
+                    .await
+                    .map_err(|e| format!("connection failed: {e}"))?;
 
-            let ms = start.elapsed().as_millis() as u64;
+                let ms = start.elapsed().as_millis() as u64;
 
-            if !resp.status().is_success() {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                p.qos.record_failure();
-                return Err(format!("HTTP {} body={}", status, body));
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let body = resp.text().await.unwrap_or_default();
+                    p.qos.record_failure();
+                    return Err(format!("HTTP {} body={}", status, body));
+                }
+
+                let att_header = resp
+                    .headers()
+                    .get("x-drpc-attestation")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+
+                let body = resp
+                    .json::<JsonRpcResponse>()
+                    .await
+                    .map_err(|e| format!("invalid response: {e}"))?;
+
+                let result_json = match (&body.result, &body.error) {
+                    (Some(r), _) => serde_json::to_string(r).unwrap_or_else(|_| "null".to_string()),
+                    (_, Some(e)) => serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()),
+                    _ => "null".to_string(),
+                };
+
+                let attestation = verify_attestation(
+                    att_header.as_deref(),
+                    chain_id,
+                    &method,
+                    &params_json,
+                    &result_json,
+                );
+
+                p.qos.record_success(ms);
+                Ok::<_, String>((body, result_json, attestation, p))
             }
-
-            let att_header = resp
-                .headers()
-                .get("x-drpc-attestation")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string());
-
-            let body = resp
-                .json::<JsonRpcResponse>()
-                .await
-                .map_err(|e| format!("invalid response: {e}"))?;
-
-            let result_json = match (&body.result, &body.error) {
-                (Some(r), _) => serde_json::to_string(r).unwrap_or_else(|_| "null".to_string()),
-                (_, Some(e)) => serde_json::to_string(e).unwrap_or_else(|_| "null".to_string()),
-                _ => "null".to_string(),
-            };
-
-            let attestation = verify_attestation(
-                att_header.as_deref(),
-                chain_id,
-                &method,
-                &params_json,
-                &result_json,
-            );
-
-            p.qos.record_success(ms);
-            Ok::<_, String>((body, result_json, attestation, p))
-        }
-    }).collect();
+        })
+        .collect();
 
     let results: Vec<Result<(JsonRpcResponse, String, Option<String>, Arc<Provider>), String>> =
         join_all(futures).await;
 
     // Group successful responses by their serialised result value.
-    let mut buckets: HashMap<String, Vec<(JsonRpcResponse, Option<String>, Arc<Provider>)>> = HashMap::new();
+    let mut buckets: HashMap<String, Vec<(JsonRpcResponse, Option<String>, Arc<Provider>)>> =
+        HashMap::new();
 
     for r in results {
         match r {
             Ok((resp, result_json, att, provider)) => {
-                buckets.entry(result_json).or_default().push((resp, att, provider));
+                buckets
+                    .entry(result_json)
+                    .or_default()
+                    .push((resp, att, provider));
             }
             Err(e) => tracing::debug!(error = %e, "quorum provider failed"),
         }
@@ -619,9 +660,16 @@ async fn dispatch_quorum(
 fn cu_weight_for(method: &str) -> u32 {
     match method {
         "eth_chainId" | "net_version" | "eth_blockNumber" => 1,
-        "eth_getBalance" | "eth_getTransactionCount" | "eth_getCode" | "eth_getStorageAt"
-        | "eth_sendRawTransaction" | "eth_getBlockByHash" | "eth_getBlockByNumber" => 5,
-        "eth_call" | "eth_estimateGas" | "eth_getTransactionReceipt"
+        "eth_getBalance"
+        | "eth_getTransactionCount"
+        | "eth_getCode"
+        | "eth_getStorageAt"
+        | "eth_sendRawTransaction"
+        | "eth_getBlockByHash"
+        | "eth_getBlockByNumber" => 5,
+        "eth_call"
+        | "eth_estimateGas"
+        | "eth_getTransactionReceipt"
         | "eth_getTransactionByHash" => 10,
         "eth_getLogs" => 20,
         _ => 10,
@@ -638,49 +686,94 @@ mod tests {
 
     #[test]
     fn required_tier_debug_methods() {
-        assert_eq!(required_tier("debug_traceCall", &None), CapabilityTier::Debug);
-        assert_eq!(required_tier("debug_traceTransaction", &None), CapabilityTier::Debug);
+        assert_eq!(
+            required_tier("debug_traceCall", &None),
+            CapabilityTier::Debug
+        );
+        assert_eq!(
+            required_tier("debug_traceTransaction", &None),
+            CapabilityTier::Debug
+        );
         assert_eq!(required_tier("trace_call", &None), CapabilityTier::Debug);
-        assert_eq!(required_tier("trace_replayTransaction", &None), CapabilityTier::Debug);
+        assert_eq!(
+            required_tier("trace_replayTransaction", &None),
+            CapabilityTier::Debug
+        );
     }
 
     #[test]
     fn required_tier_standard_methods() {
         let latest = Some(json!(["0xdeadbeef", "latest"]));
         assert_eq!(required_tier("eth_call", &latest), CapabilityTier::Standard);
-        assert_eq!(required_tier("eth_getBalance", &latest), CapabilityTier::Standard);
-        assert_eq!(required_tier("eth_getLogs", &None), CapabilityTier::Standard);
-        assert_eq!(required_tier("net_version", &None), CapabilityTier::Standard);
+        assert_eq!(
+            required_tier("eth_getBalance", &latest),
+            CapabilityTier::Standard
+        );
+        assert_eq!(
+            required_tier("eth_getLogs", &None),
+            CapabilityTier::Standard
+        );
+        assert_eq!(
+            required_tier("net_version", &None),
+            CapabilityTier::Standard
+        );
     }
 
     #[test]
     fn required_tier_archive_methods() {
         let params_idx1_hex = Some(json!(["0xdeadbeef", "0x100"]));
-        assert_eq!(required_tier("eth_getBalance", &params_idx1_hex), CapabilityTier::Archive);
-        assert_eq!(required_tier("eth_getCode", &params_idx1_hex), CapabilityTier::Archive);
-        assert_eq!(required_tier("eth_getTransactionCount", &params_idx1_hex), CapabilityTier::Archive);
+        assert_eq!(
+            required_tier("eth_getBalance", &params_idx1_hex),
+            CapabilityTier::Archive
+        );
+        assert_eq!(
+            required_tier("eth_getCode", &params_idx1_hex),
+            CapabilityTier::Archive
+        );
+        assert_eq!(
+            required_tier("eth_getTransactionCount", &params_idx1_hex),
+            CapabilityTier::Archive
+        );
 
         let params_earliest = Some(json!(["0xdeadbeef", "earliest"]));
-        assert_eq!(required_tier("eth_getBalance", &params_earliest), CapabilityTier::Archive);
+        assert_eq!(
+            required_tier("eth_getBalance", &params_earliest),
+            CapabilityTier::Archive
+        );
 
         let params_num = Some(json!(["0xdeadbeef", 1_000_000u64]));
-        assert_eq!(required_tier("eth_getBalance", &params_num), CapabilityTier::Archive);
+        assert_eq!(
+            required_tier("eth_getBalance", &params_num),
+            CapabilityTier::Archive
+        );
 
         let storage = Some(json!(["0xdeadbeef", "0x0", "0x100"]));
-        assert_eq!(required_tier("eth_getStorageAt", &storage), CapabilityTier::Archive);
+        assert_eq!(
+            required_tier("eth_getStorageAt", &storage),
+            CapabilityTier::Archive
+        );
 
         let call = Some(json!([{"to": "0xabc", "data": "0x"}, "0x100"]));
         assert_eq!(required_tier("eth_call", &call), CapabilityTier::Archive);
 
         let by_num = Some(json!(["0x100", false]));
-        assert_eq!(required_tier("eth_getBlockByNumber", &by_num), CapabilityTier::Archive);
+        assert_eq!(
+            required_tier("eth_getBlockByNumber", &by_num),
+            CapabilityTier::Archive
+        );
         let by_latest = Some(json!(["latest", false]));
-        assert_eq!(required_tier("eth_getBlockByNumber", &by_latest), CapabilityTier::Standard);
+        assert_eq!(
+            required_tier("eth_getBlockByNumber", &by_latest),
+            CapabilityTier::Standard
+        );
 
         let logs = Some(json!([{"fromBlock": "0x100", "toBlock": "0x200"}]));
         assert_eq!(required_tier("eth_getLogs", &logs), CapabilityTier::Archive);
         let logs_latest = Some(json!([{"fromBlock": "latest", "toBlock": "latest"}]));
-        assert_eq!(required_tier("eth_getLogs", &logs_latest), CapabilityTier::Standard);
+        assert_eq!(
+            required_tier("eth_getLogs", &logs_latest),
+            CapabilityTier::Standard
+        );
     }
 
     #[test]
@@ -715,7 +808,10 @@ mod tests {
             params: None,
             id: None,
         };
-        assert!(matches!(req.validate(), Err(GatewayError::InvalidRequest(_))));
+        assert!(matches!(
+            req.validate(),
+            Err(GatewayError::InvalidRequest(_))
+        ));
     }
 
     #[test]
@@ -726,7 +822,10 @@ mod tests {
             params: None,
             id: None,
         };
-        assert!(matches!(req.validate(), Err(GatewayError::InvalidRequest(_))));
+        assert!(matches!(
+            req.validate(),
+            Err(GatewayError::InvalidRequest(_))
+        ));
     }
 
     // --- cu_weight_for ---
@@ -774,7 +873,9 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-consumer-address",
-            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap(),
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+                .parse()
+                .unwrap(),
         );
         let addr = extract_consumer_address(&headers).unwrap();
         assert_eq!(
@@ -805,7 +906,10 @@ mod tests {
         let addr: Address = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
             .parse()
             .expect("valid lowercase address");
-        assert_eq!(addr.to_string().to_lowercase(), "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+        assert_eq!(
+            addr.to_string().to_lowercase(),
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        );
     }
 
     #[test]
@@ -823,7 +927,10 @@ mod tests {
 
     #[test]
     fn verify_attestation_malformed_json_returns_none() {
-        assert!(verify_attestation(Some("not-json"), 1, "eth_blockNumber", "[]", r#""0x100""#).is_none());
+        assert!(
+            verify_attestation(Some("not-json"), 1, "eth_blockNumber", "[]", r#""0x100""#)
+                .is_none()
+        );
     }
 
     #[test]
@@ -859,9 +966,12 @@ mod tests {
         let att = json!({
             "signer": "0x0000000000000000000000000000000000000001",
             "signature": sig_hex,
-        }).to_string();
+        })
+        .to_string();
 
-        assert!(verify_attestation(Some(&att), chain_id, method, params_json, result_json).is_none());
+        assert!(
+            verify_attestation(Some(&att), chain_id, method, params_json, result_json).is_none()
+        );
     }
 
     #[test]
@@ -895,8 +1005,11 @@ mod tests {
         let att = json!({
             "signer": signer.to_string().to_lowercase(),
             "signature": sig_hex,
-        }).to_string();
+        })
+        .to_string();
 
-        assert!(verify_attestation(Some(&att), chain_id, method, params_json, result_json).is_some());
+        assert!(
+            verify_attestation(Some(&att), chain_id, method, params_json, result_json).is_some()
+        );
     }
 }

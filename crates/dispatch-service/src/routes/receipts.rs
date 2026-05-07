@@ -41,7 +41,10 @@ async fn recent_handler(
     State(state): State<AppState>,
     Query(params): Query<LimitQuery>,
 ) -> Result<Json<Vec<ReceiptItem>>, StatusCode> {
-    let pool = state.db_pool.as_ref().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let limit = params.limit.unwrap_or(50).min(200) as i64;
     let rows = db::receipts::recent(pool, limit)
         .await
@@ -53,7 +56,10 @@ async fn by_payer_handler(
     State(state): State<AppState>,
     Query(params): Query<PayerQuery>,
 ) -> Result<Json<Vec<ReceiptItem>>, StatusCode> {
-    let pool = state.db_pool.as_ref().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let pool = state
+        .db_pool
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
     let limit = params.limit.unwrap_or(50).min(200) as i64;
     let rows = db::receipts::by_payer_recent(pool, &params.payer, limit)
         .await

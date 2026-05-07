@@ -1,7 +1,9 @@
 //! Prometheus metrics for the gateway.
 
 use lazy_static::lazy_static;
-use prometheus::{register_counter_vec, register_histogram_vec, CounterVec, Encoder, HistogramVec, TextEncoder};
+use prometheus::{
+    register_counter_vec, register_histogram_vec, CounterVec, Encoder, HistogramVec, TextEncoder,
+};
 
 lazy_static! {
     pub static ref REQUESTS_TOTAL: CounterVec = register_counter_vec!(
@@ -10,7 +12,6 @@ lazy_static! {
         &["chain_id", "method", "outcome"]
     )
     .unwrap();
-
     pub static ref REQUEST_DURATION: HistogramVec = register_histogram_vec!(
         "dispatch_gateway_request_duration_seconds",
         "RPC request round-trip duration",
