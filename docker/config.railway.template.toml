@@ -32,13 +32,13 @@ eip712_verifying_contract = "0x8f69F5C07477Ac46FBc491B1E6D91E2bb0111A9e"
 escrow_check_rpc_url      = "${DISPATCH_ARBITRUM_RPC}"
 # Public Lodestar gateway — service POSTs receipts to ${aggregator_url}/rav/aggregate
 aggregator_url            = "${DISPATCH_AGGREGATOR_URL}"
-# Bypass per-consumer credit limit + escrow check for trusted gateways.
-# Without this, Lodestar's gateway as payer hits the 0.1 GRT credit gate after
-# ~10 served queries (diagnosed 2026-05-07: WARN consumer credit limit reached
-# payer=0x7D14ae5f... served=0.10004 GRT threshold=0.1 GRT). The bypass is
-# safe because the gateway has on-chain escrow and is a trusted signer; the
-# credit gate exists to protect against unknown freeloaders, not the gateway.
-bypass_consumers          = ["0x7D14ae5f20cc2f6421317386Aa8E79e8728353d9"]
+# Bypass per-consumer credit limit for Lodestar's gateway PAYER wallet.
+# IMPORTANT: this is the PAYER address (the wallet funding escrow, not the
+# gateway's signing key). Petko clarified 2026-05-07 — initially set this to
+# 0x7D14ae5f… (signer) and that was wrong; it must be the consumer/payer:
+#   0xB70781305939A39e74Aa918416Df1b893e1Bd904 (Lodestar's consumer wallet,
+#   same one in cargopete's blog post for their graph-node dogfooding).
+bypass_consumers          = ["0xB70781305939A39e74Aa918416Df1b893e1Bd904"]
 
 [chains]
 supported = [42161, 8453]
