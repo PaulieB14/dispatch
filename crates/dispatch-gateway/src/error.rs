@@ -29,10 +29,6 @@ pub enum GatewayError {
     #[error("rate limit exceeded")]
     RateLimited,
 
-    /// Consumer did not provide their Ethereum address.
-    #[error("missing X-Consumer-Address header — fund escrow and include your address with each request")]
-    ConsumerAddressRequired,
-
     /// Consumer provided a header value that isn't a valid Ethereum address.
     #[error("invalid X-Consumer-Address: {0}")]
     InvalidConsumerAddress(String),
@@ -53,7 +49,7 @@ impl IntoResponse for GatewayError {
             GatewayError::ProviderError(_) | GatewayError::SigningError(_) => {
                 (StatusCode::BAD_GATEWAY, -32603, self.to_string())
             }
-            GatewayError::ConsumerAddressRequired | GatewayError::InvalidConsumerAddress(_) => {
+            GatewayError::InvalidConsumerAddress(_) => {
                 (StatusCode::PAYMENT_REQUIRED, -32004, self.to_string())
             }
             GatewayError::Internal(_) => {

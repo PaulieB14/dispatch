@@ -141,13 +141,14 @@ async fn dispatch_rpc(
 
 /// Extract and validate the `X-Consumer-Address` header.
 ///
-/// Consumers must include their Ethereum address with every request. The gateway
-/// encodes this address in the TAP receipt metadata so providers can track
-/// per-consumer escrow and produce consumer-specific RAVs.
+/// Optional in the gateway-pays model — the receipt metadata always encodes
+/// `gateway_payer_address`, not the consumer address. The header is accepted
+/// for logging/analytics but defaults to `Address::ZERO` when absent.
 fn extract_consumer_address(headers: &HeaderMap) -> Result<Address, GatewayError> {
-    let raw = headers
-        .get("x-consumer-address")
-        .ok_or(GatewayError::ConsumerAddressRequired)?
+    let Some(raw) = headers.get("x-consumer-address") else {
+        return Ok(Address::ZERO);
+    };
+    let raw = raw
         .to_str()
         .map_err(|_| GatewayError::InvalidConsumerAddress("non-UTF8 header value".to_string()))?;
 
@@ -851,11 +852,9 @@ mod tests {
 
     #[test]
     fn extract_consumer_address_missing_header() {
+        // X-Consumer-Address is optional; absent → Address::ZERO
         let headers = HeaderMap::new();
-        assert!(matches!(
-            extract_consumer_address(&headers),
-            Err(GatewayError::ConsumerAddressRequired)
-        ));
+        assert_eq!(extract_consumer_address(&headers).unwrap(), Address::ZERO);
     }
 
     #[test]
