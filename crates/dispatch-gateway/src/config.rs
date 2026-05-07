@@ -292,7 +292,7 @@ mod tests {
         assert_eq!(base * 1_000_000, 4_000_000_000_000_000_000_u128);
 
         // Per-method receipt values (GRT wei, single provider)
-        assert_eq!(1_u128 * base, 4_000_000_000_000_u128); // eth_blockNumber
+        assert_eq!(base, 4_000_000_000_000_u128); // eth_blockNumber
         assert_eq!(5_u128 * base, 20_000_000_000_000_u128); // eth_getBalance
         assert_eq!(10_u128 * base, 40_000_000_000_000_u128); // eth_call
         assert_eq!(20_u128 * base, 80_000_000_000_000_u128); // eth_getLogs
@@ -300,8 +300,8 @@ mod tests {
         // USD cost per million calls (×3 concurrent, $0.09/GRT):
         // receipt_wei × 3 × 1e6 × $0.09 / 1e18
         let factor: f64 = 3.0 * 1_000_000.0 * 0.09 / 1e18;
-        let eth_call_usd_per_m = 40_000_000_000_000_u128 as f64 * factor;
-        let eth_get_logs_usd_per_m = 80_000_000_000_000_u128 as f64 * factor;
+        let eth_call_usd_per_m = 40_000_000_000_000_f64 * factor;
+        let eth_get_logs_usd_per_m = 80_000_000_000_000_f64 * factor;
         assert!(
             (eth_call_usd_per_m - 10.80).abs() < 0.01,
             "eth_call: ${eth_call_usd_per_m:.2}/M"

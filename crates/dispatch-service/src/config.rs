@@ -19,7 +19,7 @@ fn de_u128<'de, D: Deserializer<'de>>(d: D) -> Result<u128, D::Error> {
             .trim()
             .replace('_', "")
             .parse::<u128>()
-            .map_err(|e| D::Error::custom(e)),
+            .map_err(D::Error::custom),
     }
 }
 

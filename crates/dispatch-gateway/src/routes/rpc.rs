@@ -217,10 +217,10 @@ fn requires_archive(method: &str, params: &Option<Value>) -> bool {
         // blockTag is the third parameter (index 2).
         "eth_getStorageAt" => arr.get(2).is_some_and(is_historical),
         // blockTag is the first parameter (index 0).
-        "eth_getBlockByNumber" => arr.get(0).is_some_and(is_historical),
+        "eth_getBlockByNumber" => arr.first().is_some_and(is_historical),
         // Filter object may contain fromBlock / toBlock.
         "eth_getLogs" => {
-            if let Some(Value::Object(filter)) = arr.get(0) {
+            if let Some(Value::Object(filter)) = arr.first() {
                 filter.get("fromBlock").is_some_and(is_historical)
                     || filter.get("toBlock").is_some_and(is_historical)
             } else {
@@ -283,7 +283,7 @@ async fn process_request(
             .filter(|p| {
                 p.chain_capabilities
                     .get(&chain_id)
-                    .map_or(false, |caps| caps.contains(&tier))
+                    .is_some_and(|caps| caps.contains(&tier))
             })
             .cloned()
             .collect();
@@ -409,6 +409,14 @@ fn verify_attestation(
 }
 
 // ---------------------------------------------------------------------------
+// Type aliases for complex dispatch result tuples
+// ---------------------------------------------------------------------------
+
+type ProviderResult = (JsonRpcResponse, Option<String>, Arc<Provider>);
+type ProviderTaskResult = Result<ProviderResult, String>;
+type QuorumTaskResult = Result<(JsonRpcResponse, String, Option<String>, Arc<Provider>), String>;
+
+// ---------------------------------------------------------------------------
 // Concurrent dispatch — first valid response wins (non-deterministic methods)
 // ---------------------------------------------------------------------------
 
@@ -422,8 +430,7 @@ async fn dispatch_concurrent(
 ) -> Result<(JsonRpcResponse, Option<String>, Arc<Provider>), GatewayError> {
     let params_json = serde_json::to_string(&request.params).unwrap_or_else(|_| "null".to_string());
 
-    let mut set: JoinSet<Result<(JsonRpcResponse, Option<String>, Arc<Provider>), String>> =
-        JoinSet::new();
+    let mut set: JoinSet<ProviderTaskResult> = JoinSet::new();
 
     for provider in candidates {
         let client = state.http_client.clone();
@@ -603,12 +610,10 @@ async fn dispatch_quorum(
         })
         .collect();
 
-    let results: Vec<Result<(JsonRpcResponse, String, Option<String>, Arc<Provider>), String>> =
-        join_all(futures).await;
+    let results: Vec<QuorumTaskResult> = join_all(futures).await;
 
     // Group successful responses by their serialised result value.
-    let mut buckets: HashMap<String, Vec<(JsonRpcResponse, Option<String>, Arc<Provider>)>> =
-        HashMap::new();
+    let mut buckets: HashMap<String, Vec<ProviderResult>> = HashMap::new();
 
     for r in results {
         match r {
